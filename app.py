@@ -547,7 +547,7 @@ def scrape_and_return_json():
 
 if __name__ == "__main__":
     import os
-
+    port = int(os.environ.get("PORT", 5050))
     # The Werkzeug auto-reloader restarts the whole process (killing any
     # in-flight request, including a long-running scrape) whenever it
     # detects a file change — e.g. an editor auto-save. That's convenient
@@ -565,4 +565,4 @@ if __name__ == "__main__":
     # its own browser), which is expected but will be slower and will
     # interleave console output — avoid sending a second request before
     # the first one finishes unless you mean to.
-    app.run(debug=True, host="0.0.0.0", port=5050, threaded=True, use_reloader=use_reloader)
+    app.run(debug=True, host="0.0.0.0", port=port, threaded=True, use_reloader=use_reloader)
