@@ -1,0 +1,792 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Google Maps Business Scraper</title>
+  <style>
+    :root {
+      --bg: #0f1419;
+      --surface: #1a2332;
+      --surface-2: #243044;
+      --border: #2d3a4f;
+      --text: #e8edf4;
+      --muted: #8b9cb3;
+      --accent: #3b82f6;
+      --accent-hover: #2563eb;
+      --success: #22c55e;
+      --danger: #ef4444;
+      --radius: 10px;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.5;
+      min-height: 100vh;
+    }
+
+    .container {
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 2rem 1.5rem 4rem;
+    }
+
+    header {
+      margin-bottom: 2rem;
+    }
+
+    header h1 {
+      font-size: 1.75rem;
+      font-weight: 700;
+      margin-bottom: 0.35rem;
+    }
+
+    header p {
+      color: var(--muted);
+      font-size: 0.95rem;
+    }
+
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1.5rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .card h2 {
+      font-size: 1.1rem;
+      margin-bottom: 1rem;
+    }
+
+    .form-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem;
+      margin-bottom: 1rem;
+    }
+
+    @media (max-width: 768px) {
+      .form-grid { grid-template-columns: 1fr; }
+    }
+
+    label {
+      display: block;
+      font-size: 0.85rem;
+      font-weight: 600;
+      margin-bottom: 0.4rem;
+      color: var(--muted);
+    }
+
+    input[type="text"],
+    input[type="number"] {
+      width: 100%;
+      padding: 0.65rem 0.85rem;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      font-size: 0.95rem;
+    }
+
+    .checkbox-row {
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      margin-top: 1rem;
+    }
+
+    .checkbox-row input[type="checkbox"] {
+      width: 1rem;
+      height: 1rem;
+      accent-color: var(--accent);
+    }
+
+    .checkbox-row label {
+      margin-bottom: 0;
+      color: var(--text);
+      font-weight: 500;
+      cursor: pointer;
+    }
+
+    input:focus {
+      outline: none;
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
+    }
+
+    .search-strings {
+      margin-top: 0.5rem;
+    }
+
+    .search-string-row {
+      display: flex;
+      gap: 0.5rem;
+      margin-bottom: 0.5rem;
+      align-items: center;
+    }
+
+    .search-string-row input { flex: 1; }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      padding: 0.6rem 1.1rem;
+      border: none;
+      border-radius: 8px;
+      font-size: 0.9rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s, opacity 0.15s;
+    }
+
+    .btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .btn-primary {
+      background: var(--accent);
+      color: white;
+    }
+
+    .btn-primary:hover:not(:disabled) {
+      background: var(--accent-hover);
+    }
+
+    .btn-secondary {
+      background: var(--surface-2);
+      color: var(--text);
+      border: 1px solid var(--border);
+    }
+
+    .btn-secondary:hover:not(:disabled) {
+      background: var(--border);
+    }
+
+    .btn-danger {
+      background: transparent;
+      color: var(--danger);
+      border: 1px solid var(--danger);
+      padding: 0.45rem 0.7rem;
+      font-size: 0.8rem;
+    }
+
+    .btn-danger:hover:not(:disabled) {
+      background: rgba(239, 68, 68, 0.1);
+    }
+
+    .actions {
+      display: flex;
+      gap: 0.75rem;
+      flex-wrap: wrap;
+      margin-top: 1rem;
+    }
+
+    .hint {
+      font-size: 0.8rem;
+      color: var(--muted);
+      margin-top: 0.35rem;
+    }
+
+    .loading-panel {
+      display: none;
+      text-align: center;
+      padding: 2rem;
+    }
+
+    .loading-panel.active { display: block; }
+
+    .spinner {
+      width: 44px;
+      height: 44px;
+      border: 3px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin: 0 auto 1rem;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .progress-text {
+      color: var(--muted);
+      font-size: 0.9rem;
+      margin-bottom: 0.5rem;
+    }
+
+    .progress-bar-wrap {
+      background: var(--surface-2);
+      border-radius: 999px;
+      height: 8px;
+      overflow: hidden;
+      max-width: 400px;
+      margin: 0.75rem auto 0;
+    }
+
+    .progress-bar {
+      height: 100%;
+      background: var(--accent);
+      border-radius: 999px;
+      width: 0%;
+      transition: width 0.3s ease;
+    }
+
+    .results-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 1rem;
+      margin-bottom: 1rem;
+    }
+
+    .results-count {
+      color: var(--success);
+      font-weight: 600;
+    }
+
+    .download-actions {
+      display: flex;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+    }
+
+    .table-scroll-hint {
+      font-size: 0.8rem;
+      color: var(--muted);
+      margin-bottom: 0.65rem;
+    }
+
+    .table-wrap {
+      overflow-x: auto;
+      overflow-y: auto;
+      max-width: 100%;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      -webkit-overflow-scrolling: touch;
+      scrollbar-width: thin;
+      scrollbar-color: var(--accent) var(--surface-2);
+    }
+
+    .table-wrap::-webkit-scrollbar {
+      height: 10px;
+      width: 10px;
+    }
+
+    .table-wrap::-webkit-scrollbar-track {
+      background: var(--surface-2);
+      border-radius: 8px;
+    }
+
+    .table-wrap::-webkit-scrollbar-thumb {
+      background: var(--border);
+      border-radius: 8px;
+    }
+
+    .table-wrap::-webkit-scrollbar-thumb:hover {
+      background: var(--accent);
+    }
+
+    table {
+      width: max-content;
+      min-width: 100%;
+      border-collapse: collapse;
+      font-size: 0.85rem;
+    }
+
+    th, td {
+      padding: 0.65rem 0.85rem;
+      text-align: left;
+      border-bottom: 1px solid var(--border);
+      vertical-align: top;
+      white-space: nowrap;
+      max-width: 280px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    th.col-sticky,
+    td.col-sticky {
+      position: sticky;
+      left: 0;
+      z-index: 2;
+      background: var(--surface);
+      box-shadow: 2px 0 6px rgba(0, 0, 0, 0.15);
+    }
+
+    th.col-sticky {
+      background: var(--surface-2);
+      z-index: 3;
+    }
+
+    td.col-wrap {
+      white-space: normal;
+      min-width: 140px;
+      max-width: 220px;
+    }
+
+    .link-list a {
+      display: block;
+      margin-bottom: 0.2rem;
+      word-break: break-all;
+      white-space: normal;
+    }
+
+    th {
+      background: var(--surface-2);
+      font-weight: 600;
+      color: var(--muted);
+      position: sticky;
+      top: 0;
+      white-space: nowrap;
+    }
+
+    tr:hover td { background: rgba(59, 130, 246, 0.05); }
+
+    td a {
+      color: var(--accent);
+      text-decoration: none;
+      word-break: break-all;
+    }
+
+    td a:hover { text-decoration: underline; }
+
+    .empty-cell { color: var(--muted); }
+
+    .error-box {
+      display: none;
+      background: rgba(239, 68, 68, 0.1);
+      border: 1px solid var(--danger);
+      color: #fca5a5;
+      padding: 0.85rem 1rem;
+      border-radius: 8px;
+      margin-bottom: 1rem;
+    }
+
+    .error-box.active { display: block; }
+
+    #resultsSection { display: none; }
+    #resultsSection.active { display: block; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>Google Maps Business Scraper</h1>
+      <p>Search wholesalers, distributors, importers, and suppliers by country on Google Maps.</p>
+    </header>
+
+    <div id="errorBox" class="error-box"></div>
+
+    <section class="card">
+      <h2>Search Configuration</h2>
+      <form id="scrapeForm">
+        <div class="form-grid">
+          <div>
+            <label for="country">Country</label>
+            <input type="text" id="country" name="country" placeholder="e.g. India, Germany, USA" required>
+          </div>
+          <div>
+            <label for="maxResults">Max Results</label>
+            <input type="number" id="maxResults" name="maxResults" value="50" min="1" max="500" required>
+            <p class="hint">Maximum unique businesses to scrape (1–500).</p>
+          </div>
+        </div>
+
+        <div class="search-strings">
+          <label>Search Strings</label>
+          <p class="hint">Each term is searched as "&lt;term&gt; in &lt;country&gt;" on Google Maps.</p>
+          <div id="searchStringsContainer"></div>
+          <div class="actions">
+            <button type="button" class="btn btn-secondary" id="addStringBtn">+ Add search string</button>
+            <button type="button" class="btn btn-secondary" id="resetStringsBtn">Reset defaults</button>
+          </div>
+        </div>
+
+        <div class="checkbox-row">
+          <input type="checkbox" id="autoFetchEmails" name="autoFetchEmails">
+          <label for="autoFetchEmails">Fetch emails from websites after scrape</label>
+        </div>
+        <div class="checkbox-row">
+          <input type="checkbox" id="autoFetchSocial" name="autoFetchSocial">
+          <label for="autoFetchSocial">Fetch social profiles (LinkedIn, Instagram, WhatsApp) after scrape</label>
+        </div>
+        <p class="hint">Enrichment runs after businesses are found. You can also fetch emails or social links manually from the results.</p>
+
+        <div class="actions">
+          <button type="submit" class="btn btn-primary" id="startBtn">Start Scrape</button>
+        </div>
+      </form>
+    </section>
+
+    <section class="card loading-panel" id="loadingPanel">
+      <div class="spinner"></div>
+      <p class="progress-text" id="progressMessage">Starting scrape...</p>
+      <div class="progress-bar-wrap">
+        <div class="progress-bar" id="progressBar"></div>
+      </div>
+    </section>
+
+    <section class="card" id="resultsSection">
+      <div class="results-header">
+        <div>
+          <h2>Results</h2>
+          <p class="results-count" id="resultsCount"></p>
+        </div>
+        <div class="download-actions">
+          <button class="btn btn-secondary" id="fetchEmailsBtn">Fetch Emails</button>
+          <button class="btn btn-secondary" id="fetchSocialBtn">Fetch Social Profiles</button>
+          <button class="btn btn-secondary" id="downloadJsonBtn">Download JSON</button>
+          <button class="btn btn-secondary" id="downloadExcelBtn">Download Excel</button>
+        </div>
+      </div>
+      <p class="table-scroll-hint">← Scroll horizontally to view all columns →</p>
+      <div class="table-wrap" id="tableWrap">
+        <table>
+          <thead>
+            <tr>
+              <th class="col-sticky">#</th>
+              <th>Name</th>
+              <th>Address</th>
+              <th>Phone</th>
+              <th>Website</th>
+              <th>Email</th>
+              <th>LinkedIn</th>
+              <th>Instagram</th>
+              <th>WhatsApp</th>
+              <th>Rating</th>
+              <th>Reviews</th>
+              <th>Category</th>
+              <th>Search Query</th>
+              <th>Maps URL</th>
+            </tr>
+          </thead>
+          <tbody id="resultsBody"></tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+
+  <script>
+    const DEFAULT_STRINGS = {{ default_search_strings | tojson }};
+
+    const COLUMN_FIELDS = [
+      "name", "address", "phone", "website", "email",
+      "linkedin", "instagram", "whatsapp",
+      "rating", "reviews_count", "category", "search_query", "place_url"
+    ];
+
+    let currentJobId = null;
+    let pollTimer = null;
+
+    const els = {
+      form: document.getElementById("scrapeForm"),
+      country: document.getElementById("country"),
+      maxResults: document.getElementById("maxResults"),
+      stringsContainer: document.getElementById("searchStringsContainer"),
+      addStringBtn: document.getElementById("addStringBtn"),
+      resetStringsBtn: document.getElementById("resetStringsBtn"),
+      startBtn: document.getElementById("startBtn"),
+      loadingPanel: document.getElementById("loadingPanel"),
+      progressMessage: document.getElementById("progressMessage"),
+      progressBar: document.getElementById("progressBar"),
+      resultsSection: document.getElementById("resultsSection"),
+      resultsBody: document.getElementById("resultsBody"),
+      resultsCount: document.getElementById("resultsCount"),
+      autoFetchEmails: document.getElementById("autoFetchEmails"),
+      autoFetchSocial: document.getElementById("autoFetchSocial"),
+      fetchEmailsBtn: document.getElementById("fetchEmailsBtn"),
+      fetchSocialBtn: document.getElementById("fetchSocialBtn"),
+      tableWrap: document.getElementById("tableWrap"),
+      downloadJsonBtn: document.getElementById("downloadJsonBtn"),
+      downloadExcelBtn: document.getElementById("downloadExcelBtn"),
+      errorBox: document.getElementById("errorBox"),
+    };
+
+    function showError(message) {
+      els.errorBox.textContent = message;
+      els.errorBox.classList.add("active");
+    }
+
+    function clearError() {
+      els.errorBox.textContent = "";
+      els.errorBox.classList.remove("active");
+    }
+
+    function createStringRow(value = "") {
+      const row = document.createElement("div");
+      row.className = "search-string-row";
+
+      const input = document.createElement("input");
+      input.type = "text";
+      input.className = "search-string-input";
+      input.placeholder = "e.g. Pharmaceutical distributors";
+      input.value = value;
+
+      const removeBtn = document.createElement("button");
+      removeBtn.type = "button";
+      removeBtn.className = "btn btn-danger";
+      removeBtn.textContent = "Remove";
+      removeBtn.addEventListener("click", () => {
+        if (els.stringsContainer.children.length > 1) {
+          row.remove();
+        }
+      });
+
+      row.appendChild(input);
+      row.appendChild(removeBtn);
+      return row;
+    }
+
+    function renderSearchStrings(strings) {
+      els.stringsContainer.innerHTML = "";
+      strings.forEach((s) => els.stringsContainer.appendChild(createStringRow(s)));
+    }
+
+    function getSearchStrings() {
+      return [...els.stringsContainer.querySelectorAll(".search-string-input")]
+        .map((input) => input.value.trim())
+        .filter(Boolean);
+    }
+
+    function setLoading(active) {
+      els.loadingPanel.classList.toggle("active", active);
+      els.startBtn.disabled = active;
+      els.addStringBtn.disabled = active;
+      els.resetStringsBtn.disabled = active;
+      els.fetchEmailsBtn.disabled = active || !currentJobId;
+      els.fetchSocialBtn.disabled = active || !currentJobId;
+    }
+
+    function setEnrichmentButtonsEnabled(hasResults) {
+      const disabled = !hasResults || els.loadingPanel.classList.contains("active");
+      els.fetchEmailsBtn.disabled = disabled;
+      els.fetchSocialBtn.disabled = disabled;
+    }
+
+    function updateProgress(job) {
+      els.progressMessage.textContent = job.message || "Working...";
+
+      let percent = 0;
+      if (job.stage === "searching" && job.total > 0) {
+        percent = Math.min(35, (job.current / job.total) * 35);
+      } else if (job.stage === "extracting" && job.total > 0) {
+        percent = 35 + (job.current / job.total) * 30;
+      } else if (job.stage === "fetching_emails" && job.total > 0) {
+        percent = 65 + (job.current / job.total) * 15;
+      } else if (job.stage === "fetching_social" && job.total > 0) {
+        percent = 80 + (job.current / job.total) * 20;
+      } else if (job.status === "completed") {
+        percent = 100;
+      } else if (job.status === "running") {
+        percent = 10;
+      }
+
+      els.progressBar.style.width = `${percent}%`;
+    }
+
+    function escapeHtml(text) {
+      const div = document.createElement("div");
+      div.textContent = text ?? "";
+      return div.innerHTML;
+    }
+
+    function renderCell(value, isLink = false) {
+      if (!value) return '<span class="empty-cell">—</span>';
+      if (isLink) {
+        const safe = escapeHtml(value);
+        return `<a href="${safe}" target="_blank" rel="noopener noreferrer">${safe}</a>`;
+      }
+      return escapeHtml(value);
+    }
+
+    function renderLinkList(value) {
+      if (!value) return '<span class="empty-cell">—</span>';
+      const parts = value.split(",").map((part) => part.trim()).filter(Boolean);
+      if (!parts.length) return '<span class="empty-cell">—</span>';
+      return `<div class="link-list">${parts.map((part) => {
+        const safe = escapeHtml(part);
+        return `<a href="${safe}" target="_blank" rel="noopener noreferrer">${safe}</a>`;
+      }).join("")}</div>`;
+    }
+
+    function renderResults(results) {
+      els.resultsBody.innerHTML = results.map((row, index) => `
+        <tr>
+          <td class="col-sticky">${index + 1}</td>
+          <td class="col-wrap">${renderCell(row.name)}</td>
+          <td class="col-wrap">${renderCell(row.address)}</td>
+          <td>${renderCell(row.phone)}</td>
+          <td class="col-wrap">${renderCell(row.website, true)}</td>
+          <td class="col-wrap">${renderCell(row.email)}</td>
+          <td class="col-wrap">${renderLinkList(row.linkedin)}</td>
+          <td class="col-wrap">${renderLinkList(row.instagram)}</td>
+          <td class="col-wrap">${renderLinkList(row.whatsapp)}</td>
+          <td>${renderCell(row.rating)}</td>
+          <td>${renderCell(row.reviews_count)}</td>
+          <td class="col-wrap">${renderCell(row.category)}</td>
+          <td class="col-wrap">${renderCell(row.search_query)}</td>
+          <td class="col-wrap">${renderCell(row.place_url, true)}</td>
+        </tr>
+      `).join("");
+
+      const withEmails = results.filter((row) => row.email).length;
+      const withSocial = results.filter((row) => row.linkedin || row.instagram || row.whatsapp).length;
+      const extras = [];
+      if (withEmails) extras.push(`${withEmails} with emails`);
+      if (withSocial) extras.push(`${withSocial} with social links`);
+      const extraSummary = extras.length ? ` · ${extras.join(" · ")}` : "";
+      els.resultsCount.textContent = `${results.length} business${results.length === 1 ? "" : "es"} found${extraSummary}`;
+      els.resultsSection.classList.add("active");
+      setEnrichmentButtonsEnabled(results.length > 0);
+    }
+
+    async function pollJob(jobId) {
+      const response = await fetch(`/api/jobs/${jobId}`);
+      const job = await response.json();
+
+      if (!response.ok) {
+        throw new Error(job.error || "Failed to fetch job status.");
+      }
+
+      updateProgress(job);
+
+      if (job.status === "completed") {
+        clearInterval(pollTimer);
+        pollTimer = null;
+        setLoading(false);
+        renderResults(job.results || []);
+        if (!job.results || job.results.length === 0) {
+          showError("Scrape finished but no listings were found. Try different search strings or country.");
+        }
+        return;
+      }
+
+      if (job.status === "failed") {
+        clearInterval(pollTimer);
+        pollTimer = null;
+        setLoading(false);
+        showError(job.error || "Scrape failed.");
+      }
+    }
+
+    els.form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      clearError();
+      els.resultsSection.classList.remove("active");
+
+      const country = els.country.value.trim();
+      const maxResults = parseInt(els.maxResults.value, 10);
+      const searchStrings = getSearchStrings();
+
+      if (!country) {
+        showError("Please enter a country.");
+        return;
+      }
+      if (!searchStrings.length) {
+        showError("Please add at least one search string.");
+        return;
+      }
+
+      setLoading(true);
+      els.progressBar.style.width = "5%";
+      els.progressMessage.textContent = "Submitting scrape job...";
+
+      try {
+        const response = await fetch("/api/scrape", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            country,
+            max_results: maxResults,
+            search_strings: searchStrings,
+            auto_fetch_emails: els.autoFetchEmails.checked,
+            auto_fetch_social: els.autoFetchSocial.checked,
+          }),
+        });
+
+        const data = await response.json();
+        if (!response.ok) {
+          throw new Error(data.error || "Failed to start scrape.");
+        }
+
+        currentJobId = data.job_id;
+        pollTimer = setInterval(() => pollJob(currentJobId), 2000);
+        await pollJob(currentJobId);
+      } catch (err) {
+        setLoading(false);
+        showError(err.message);
+      }
+    });
+
+    function download(format) {
+      if (!currentJobId) return;
+      window.location.href = `/api/jobs/${currentJobId}/download/${format}`;
+    }
+
+    els.downloadJsonBtn.addEventListener("click", () => download("json"));
+    els.downloadExcelBtn.addEventListener("click", () => download("excel"));
+
+    els.fetchEmailsBtn.addEventListener("click", async () => {
+      if (!currentJobId) return;
+      clearError();
+      setLoading(true);
+      els.progressBar.style.width = "65%";
+      els.progressMessage.textContent = "Starting email fetch...";
+
+      try {
+        const response = await fetch(`/api/jobs/${currentJobId}/fetch-emails`, { method: "POST" });
+        const data = await response.json();
+        if (!response.ok) {
+          throw new Error(data.error || "Failed to start email fetch.");
+        }
+
+        if (pollTimer) clearInterval(pollTimer);
+        pollTimer = setInterval(() => pollJob(currentJobId), 2000);
+        await pollJob(currentJobId);
+      } catch (err) {
+        setLoading(false);
+        setEnrichmentButtonsEnabled(true);
+        showError(err.message);
+      }
+    });
+
+    els.fetchSocialBtn.addEventListener("click", async () => {
+      if (!currentJobId) return;
+      clearError();
+      setLoading(true);
+      els.progressBar.style.width = "80%";
+      els.progressMessage.textContent = "Starting social profile fetch...";
+
+      try {
+        const response = await fetch(`/api/jobs/${currentJobId}/fetch-social`, { method: "POST" });
+        const data = await response.json();
+        if (!response.ok) {
+          throw new Error(data.error || "Failed to start social profile fetch.");
+        }
+
+        if (pollTimer) clearInterval(pollTimer);
+        pollTimer = setInterval(() => pollJob(currentJobId), 2000);
+        await pollJob(currentJobId);
+      } catch (err) {
+        setLoading(false);
+        setEnrichmentButtonsEnabled(true);
+        showError(err.message);
+      }
+    });
+
+    els.addStringBtn.addEventListener("click", () => {
+      els.stringsContainer.appendChild(createStringRow());
+    });
+    els.resetStringsBtn.addEventListener("click", () => renderSearchStrings(DEFAULT_STRINGS));
+
+    renderSearchStrings(DEFAULT_STRINGS);
+  </script>
+</body>
+</html>
