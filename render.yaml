@@ -1,0 +1,5 @@
+services:
+  - type: web
+    name: google-maps-scrapper
+    env: docker
+    plan: free
