@@ -4,8 +4,11 @@ from __future__ import annotations
 
 import csv
 import json
+import math
 import re
+import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Callable
 from urllib.parse import quote_plus
@@ -156,7 +159,14 @@ def _extract_place_details(page: Page, place: dict[str, str], config: ScrapeConf
 
     try:
         page.goto(place["url"], wait_until="domcontentloaded", timeout=30000)
-        page.wait_for_timeout(2000)
+        # Wait for the actual content to be ready instead of a blind fixed
+        # sleep: this finishes as soon as the page is ready (often under a
+        # second) rather than always paying a flat 2s penalty, while still
+        # tolerating slower pages up to the timeout.
+        try:
+            page.wait_for_selector("h1", timeout=8000)
+        except PlaywrightTimeout:
+            pass
         _dismiss_consent_if_present(page)
     except PlaywrightTimeout:
         return listing
@@ -220,6 +230,64 @@ def _search_and_collect(
     return places
 
 
+def _extract_details_chunk(
+    places_chunk: list[dict[str, str]],
+    config: ScrapeConfig,
+    progress_counter: dict[str, int],
+    progress_lock: threading.Lock,
+    total: int,
+    progress_callback: Callable[[str, str, int, int], None] | None,
+) -> list[BusinessListing]:
+    """Extract details for a contiguous slice of places using its own browser.
+
+    Playwright's sync API isn't safe to share across threads, so each
+    worker thread launches its own Chromium instance and works through its
+    slice sequentially — but multiple slices run at the same time, which is
+    what actually parallelizes this stage. Progress (current/total) is
+    tracked with a shared counter so the reported percentage still reflects
+    overall completion across all workers combined.
+    """
+    listings: list[BusinessListing] = []
+    if not places_chunk:
+        return listings
+
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch(headless=config.headless, slow_mo=config.slow_mo)
+        context = browser.new_context(
+            viewport={"width": 1400, "height": 900},
+            locale="en-US",
+            user_agent=(
+                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+            ),
+        )
+        page = context.new_page()
+
+        for place in places_chunk:
+            listing = _extract_place_details(page, place, config)
+            listings.append(listing)
+
+            with progress_lock:
+                progress_counter["count"] += 1
+                current = progress_counter["count"]
+
+            name = place.get("name", "Unknown")
+            print(f"Extracting details {current}/{total}: {name}")
+            if progress_callback:
+                progress_callback("extracting", f"Extracting details: {name}", current, total)
+
+            # Small pacing delay between navigations in the same browser —
+            # trimmed from the old 800ms since we now also get a natural
+            # slowdown from running multiple browsers concurrently, but
+            # kept non-zero to avoid hammering Google too aggressively.
+            page.wait_for_timeout(400)
+
+        context.close()
+        browser.close()
+
+    return listings
+
+
 def scrape_google_maps(
     config: ScrapeConfig,
     progress_callback: Callable[[str, str, int, int], None] | None = None,
@@ -266,19 +334,41 @@ def scrape_google_maps(
             print(f"  Found {len(places)} listings ({len(all_places)} total unique)")
             _report("searching", f"Found {len(all_places)} unique listings so far", len(all_places), config.max_results)
 
-        listings: list[BusinessListing] = []
-        total = len(all_places)
-
-        for index, place in enumerate(all_places, start=1):
-            name = place.get("name", "Unknown")
-            print(f"Extracting details {index}/{total}: {name}")
-            _report("extracting", f"Extracting details: {name}", index, total)
-            listing = _extract_place_details(page, place, config)
-            listings.append(listing)
-            page.wait_for_timeout(800)
-
+        # Search phase is done — close this browser before opening the
+        # extraction workers' own browsers below.
         context.close()
         browser.close()
+
+    # --- Detail extraction: parallelized across several browser instances ---
+    # This used to visit each business's page one at a time in the same
+    # browser (~3-4s each, fully serial). Now all_places is split into
+    # contiguous chunks and each chunk is processed concurrently by its own
+    # worker (own browser), which is the main lever for speeding this stage
+    # up. Chunks are contiguous slices of the original list and results are
+    # reassembled in chunk order, so the final `listings` order exactly
+    # matches what the old sequential version would have produced.
+    total = len(all_places)
+    listings: list[BusinessListing] = []
+
+    if total:
+        workers = max(1, min(config.extraction_workers, total))
+        chunk_size = math.ceil(total / workers)
+        chunks = [all_places[i : i + chunk_size] for i in range(0, total, chunk_size)]
+
+        progress_counter = {"count": 0}
+        progress_lock = threading.Lock()
+
+        def _process_chunk(chunk: list[dict[str, str]]) -> list[BusinessListing]:
+            return _extract_details_chunk(
+                chunk, config, progress_counter, progress_lock, total, progress_callback
+            )
+
+        with ThreadPoolExecutor(max_workers=len(chunks)) as executor:
+            # executor.map preserves the order of `chunks` in its results,
+            # even though the chunks themselves run concurrently — so
+            # flattening in this order reproduces the original sequence.
+            for chunk_listings in executor.map(_process_chunk, chunks):
+                listings.extend(chunk_listings)
 
     return listings
 

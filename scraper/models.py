@@ -34,3 +34,4 @@ class ScrapeConfig:
     output_dir: str = "output"
     extra_queries: list[str] = field(default_factory=list)
     search_strings: list[str] = field(default_factory=list)
+    extraction_workers: int = 4
