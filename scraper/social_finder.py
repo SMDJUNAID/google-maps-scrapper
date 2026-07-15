@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import re
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from html.parser import HTMLParser
+from threading import Lock
 from typing import Callable
 from urllib.error import HTTPError, URLError
 from urllib.parse import unquote, urljoin, urlparse
 
-from scraper.email_finder import CONTACT_PATHS, _fetch_page, _normalize_website
+from scraper.email_finder import CONTACT_PATHS, DEFAULT_MAX_WORKERS, _fetch_page, _normalize_website
 
 LINKEDIN_PROFILE_RE = re.compile(
     r"https?://(?:[a-z]+\.)?linkedin\.com/(?:company|in|showcase)/[a-zA-Z0-9_\-%]+/?",
@@ -227,34 +229,50 @@ def links_to_string(links: list[str]) -> str:
 def enrich_results_with_social(
     results: list[dict],
     progress_callback: Callable[[str, str, int, int], None] | None = None,
+    max_workers: int = DEFAULT_MAX_WORKERS,
 ) -> list[dict]:
-    """Fetch social profile links for all scraped businesses that have a website."""
-    total = len(results)
-    enriched: list[dict] = []
+    """Fetch social profile links for all scraped businesses that have a website.
 
-    for index, row in enumerate(results, start=1):
+    Runs concurrently across businesses — see enrich_results_with_emails
+    for the rationale; same pattern here.
+    """
+    total = len(results)
+    output = [dict(row) for row in results]
+
+    if not output:
+        return output
+
+    completed = 0
+    lock = Lock()
+
+    def _report(name: str) -> None:
+        nonlocal completed
+        with lock:
+            completed += 1
+            current = completed
+        if progress_callback:
+            progress_callback("fetching_social", f"Fetching social profiles: {name}", current, total)
+
+    def _process(index: int) -> None:
+        row = output[index]
         name = row.get("name") or "Unknown"
         website = row.get("website") or ""
 
-        if progress_callback:
-            progress_callback(
-                "fetching_social",
-                f"Fetching social profiles: {name}",
-                index,
-                total,
-            )
-
-        updated = dict(row)
         if website:
             social = find_social_for_website(website)
-            updated["linkedin"] = links_to_string(social["linkedin"])
-            updated["instagram"] = links_to_string(social["instagram"])
-            updated["whatsapp"] = links_to_string(social["whatsapp"])
+            row["linkedin"] = links_to_string(social["linkedin"])
+            row["instagram"] = links_to_string(social["instagram"])
+            row["whatsapp"] = links_to_string(social["whatsapp"])
         else:
-            updated["linkedin"] = updated.get("linkedin") or ""
-            updated["instagram"] = updated.get("instagram") or ""
-            updated["whatsapp"] = updated.get("whatsapp") or ""
+            row["linkedin"] = row.get("linkedin") or ""
+            row["instagram"] = row.get("instagram") or ""
+            row["whatsapp"] = row.get("whatsapp") or ""
 
-        enriched.append(updated)
+        _report(name)
 
-    return enriched
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = [executor.submit(_process, i) for i in range(len(output))]
+        for future in as_completed(futures):
+            future.result()
+
+    return output

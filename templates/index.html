@@ -578,6 +578,9 @@
         percent = Math.min(35, (job.current / job.total) * 35);
       } else if (job.stage === "extracting" && job.total > 0) {
         percent = 35 + (job.current / job.total) * 30;
+      } else if (job.stage === "fetching_contact_info" && job.total > 0) {
+        // Combined email + social enrichment (both requested at once)
+        percent = 65 + (job.current / job.total) * 35;
       } else if (job.stage === "fetching_emails" && job.total > 0) {
         percent = 65 + (job.current / job.total) * 15;
       } else if (job.stage === "fetching_social" && job.total > 0) {

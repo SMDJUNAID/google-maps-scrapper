@@ -11,6 +11,7 @@ from typing import Any
 
 from flask import Flask, jsonify, render_template, request, send_file
 
+from scraper.contact_finder import enrich_results_combined
 from scraper.email_finder import enrich_results_with_emails
 from scraper.export import to_excel_bytes_from_dicts, to_json_bytes_from_dicts
 from scraper.maps_scraper import scrape_google_maps
@@ -104,6 +105,12 @@ def _execute_scrape_sync(
     visible progress in the terminal instead of appearing to hang —
     email/social enrichment in particular can take a while per business
     since each website is checked over several possible contact pages.
+
+    When both auto_fetch_emails and auto_fetch_social are requested, this
+    uses enrich_results_combined() to crawl each website once for both
+    instead of twice, and every enrichment path runs businesses
+    concurrently — see scraper/contact_finder.py, scraper/email_finder.py,
+    and scraper/social_finder.py.
     """
 
     def _log_progress(stage: str, message: str, current: int, total: int) -> None:
@@ -115,11 +122,15 @@ def _execute_scrape_sync(
     if not data:
         return data
 
-    if auto_fetch_emails:
+    if auto_fetch_emails and auto_fetch_social:
+        print(f"Fetching emails + social profiles for {len(data)} businesses (combined, concurrent)...")
+        data = enrich_results_combined(
+            data, fetch_emails=True, fetch_social=True, progress_callback=_log_progress
+        )
+    elif auto_fetch_emails:
         print(f"Fetching emails for {len(data)} businesses...")
         data = enrich_results_with_emails(data, progress_callback=_log_progress)
-
-    if auto_fetch_social:
+    elif auto_fetch_social:
         print(f"Fetching social profiles for {len(data)} businesses...")
         data = enrich_results_with_social(data, progress_callback=_log_progress)
 
@@ -185,6 +196,48 @@ def _run_social_enrichment(job_id: str, results: list[dict[str, Any]]) -> list[d
         status="completed",
         stage="done",
         message=f"Social fetch complete — {with_social} of {len(enriched)} businesses have social links.",
+        results=enriched,
+        current=len(enriched),
+        total=len(enriched),
+        error=None,
+    )
+    return enriched
+
+
+def _run_combined_enrichment(job_id: str, results: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    def on_progress(stage: str, message: str, current: int, total: int) -> None:
+        _update_job(
+            job_id,
+            status="running",
+            stage=stage,
+            message=message,
+            current=current,
+            total=total,
+        )
+
+    _update_job(
+        job_id,
+        status="running",
+        stage="fetching_contact_info",
+        message="Starting email + social profile enrichment...",
+        current=0,
+        total=len(results),
+    )
+    enriched = enrich_results_combined(
+        results, fetch_emails=True, fetch_social=True, progress_callback=on_progress
+    )
+    with_emails = sum(1 for row in enriched if row.get("email"))
+    with_social = sum(
+        1 for row in enriched if row.get("linkedin") or row.get("instagram") or row.get("whatsapp")
+    )
+    _update_job(
+        job_id,
+        status="completed",
+        stage="done",
+        message=(
+            f"Enrichment complete — {with_emails} of {len(enriched)} businesses have emails, "
+            f"{with_social} have social links."
+        ),
         results=enriched,
         current=len(enriched),
         total=len(enriched),
@@ -263,14 +316,15 @@ def _run_post_scrape_enrichment(
     auto_fetch_social: bool,
 ) -> None:
     try:
-        current = results
-        if auto_fetch_emails:
-            current = _run_email_enrichment(job_id, current)
-        if auto_fetch_social:
-            _run_social_enrichment(job_id, current)
+        if auto_fetch_emails and auto_fetch_social:
+            _run_combined_enrichment(job_id, results)
             return
         if auto_fetch_emails:
+            _run_email_enrichment(job_id, results)
             _update_job(job_id, status="completed", stage="done")
+            return
+        if auto_fetch_social:
+            _run_social_enrichment(job_id, results)
             return
     except Exception:
         return

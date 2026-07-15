@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import re
 import ssl
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from html.parser import HTMLParser
+from threading import Lock
 from typing import Callable
 from urllib.error import HTTPError, URLError
 from urllib.parse import urljoin, urlparse
@@ -55,7 +57,10 @@ USER_AGENT = (
     "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
 )
 
-REQUEST_TIMEOUT = 12
+REQUEST_TIMEOUT = 8  # was 12s — trimmed since most sites respond well under this;
+                      # slow/unreachable sites now waste less time per path.
+
+DEFAULT_MAX_WORKERS = 8  # how many businesses to enrich concurrently
 
 
 class _MailtoParser(HTMLParser):
@@ -186,30 +191,50 @@ def emails_to_string(emails: list[str]) -> str:
 def enrich_results_with_emails(
     results: list[dict],
     progress_callback: Callable[[str, str, int, int], None] | None = None,
+    max_workers: int = DEFAULT_MAX_WORKERS,
 ) -> list[dict]:
-    """Fetch emails for all scraped businesses that have a website."""
-    total = len(results)
-    enriched: list[dict] = []
+    """Fetch emails for all scraped businesses that have a website.
 
-    for index, row in enumerate(results, start=1):
+    Runs concurrently across businesses (each website fetch is independent
+    I/O-bound work), which is the main lever for speeding this up — it's
+    the same total network work, just not serialized one business at a
+    time. Progress is still reported as each business finishes, though the
+    completion order may differ from the input order since they run in
+    parallel.
+    """
+    total = len(results)
+    output = [dict(row) for row in results]
+
+    if not output:
+        return output
+
+    completed = 0
+    lock = Lock()
+
+    def _report(name: str) -> None:
+        nonlocal completed
+        with lock:
+            completed += 1
+            current = completed
+        if progress_callback:
+            progress_callback("fetching_emails", f"Fetching emails: {name}", current, total)
+
+    def _process(index: int) -> None:
+        row = output[index]
         name = row.get("name") or "Unknown"
         website = row.get("website") or ""
 
-        if progress_callback:
-            progress_callback(
-                "fetching_emails",
-                f"Fetching emails: {name}",
-                index,
-                total,
-            )
-
-        updated = dict(row)
         if website:
             emails = find_emails_for_website(website)
-            updated["email"] = emails_to_string(emails)
+            row["email"] = emails_to_string(emails)
         else:
-            updated["email"] = updated.get("email") or ""
+            row["email"] = row.get("email") or ""
 
-        enriched.append(updated)
+        _report(name)
 
-    return enriched
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = [executor.submit(_process, i) for i in range(len(output))]
+        for future in as_completed(futures):
+            future.result()  # re-raise any exception from a worker
+
+    return output
