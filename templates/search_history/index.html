@@ -1,0 +1,484 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Search History - Google Maps Scraper</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+	        body {
+	            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+	            background: linear-gradient(180deg, rgba(15, 118, 110, 0.09), rgba(217, 119, 6, 0.05) 45%, #f3f6f4 100%);
+	            min-height: 100vh;
+	            padding: 20px;
+	        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+	        .header {
+	            background: white;
+	            border-radius: 12px;
+	            padding: 30px;
+	            margin-bottom: 30px;
+	            border: 1px solid #d9e2dc;
+	            box-shadow: 0 10px 28px rgba(31, 41, 51, 0.08);
+	        }
+
+	        .header h1 {
+	            color: #1f2933;
+	            margin-bottom: 10px;
+	        }
+
+	        .header p {
+	            color: #64746a;
+	            margin-bottom: 20px;
+	        }
+
+	        .back-btn {
+            display: inline-block;
+            padding: 10px 20px;
+	            background: #0f766e;
+            color: white;
+            text-decoration: none;
+            border-radius: 6px;
+            font-weight: 500;
+            transition: background 0.3s;
+        }
+
+	        .back-btn:hover {
+	            background: #115e59;
+	        }
+
+	        .filters {
+	            background: white;
+	            border-radius: 12px;
+	            padding: 20px;
+	            margin-bottom: 30px;
+	            border: 1px solid #d9e2dc;
+	            box-shadow: 0 8px 22px rgba(31, 41, 51, 0.06);
+	        }
+
+	        .filters h3 {
+	            color: #1f2933;
+	            margin-bottom: 15px;
+	        }
+
+        .filter-row {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 15px;
+        }
+
+        .filter-group {
+            display: flex;
+            flex-direction: column;
+        }
+
+	        .filter-group label {
+	            font-size: 14px;
+	            color: #64746a;
+            margin-bottom: 5px;
+            font-weight: 500;
+        }
+
+	        .filter-group select,
+	        .filter-group input {
+	            padding: 10px;
+	            border: 1px solid #d9e2dc;
+	            border-radius: 6px;
+	            font-size: 14px;
+	            background: #f7faf8;
+	            color: #1f2933;
+	        }
+
+        .filter-group select:focus,
+        .filter-group input:focus {
+	            outline: none;
+	            border-color: #0f766e;
+	            box-shadow: 0 0 0 3px rgba(15, 118, 110, 0.14);
+	        }
+
+        .clear-filters {
+            padding: 10px 20px;
+	            background: #f7faf8;
+	            color: #64746a;
+	            border: 1px solid #d9e2dc;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.3s;
+        }
+
+        .clear-filters:hover {
+	            background: #edf5f1;
+	        }
+
+	        .search-jobs-table {
+	            background: white;
+	            border-radius: 12px;
+	            overflow: hidden;
+	            border: 1px solid #d9e2dc;
+	            box-shadow: 0 8px 22px rgba(31, 41, 51, 0.06);
+	        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        thead {
+	            background: #f7faf8;
+	        }
+
+        th {
+            padding: 15px;
+            text-align: left;
+            font-weight: 600;
+	            color: #1f2933;
+            font-size: 14px;
+	            border-bottom: 2px solid #d9e2dc;
+        }
+
+        td {
+            padding: 15px;
+	            border-bottom: 1px solid #e6eee9;
+	            font-size: 14px;
+	            color: #64746a;
+        }
+
+        tr:hover {
+	            background: #f7faf8;
+        }
+
+        .status-badge {
+            display: inline-block;
+            padding: 5px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+
+        .status-completed {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .status-running {
+            background: #cce5ff;
+            color: #004085;
+        }
+
+        .status-failed {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        .status-pending {
+            background: #fff3cd;
+            color: #856404;
+        }
+
+        .status-new {
+            background: #e2e3e5;
+            color: #41464b;
+        }
+
+        .status-qualified {
+            background: #cfe2ff;
+            color: #084298;
+        }
+
+        .status-contacted {
+            background: #cff4fc;
+            color: #055160;
+        }
+
+        .status-interested {
+            background: #fff3cd;
+            color: #856404;
+        }
+
+        .status-meeting-scheduled {
+	            background: #ccfbf1;
+	            color: #115e59;
+        }
+
+        .status-proposal-sent {
+            background: #d3d3d4;
+            color: #141619;
+        }
+
+        .status-negotiation {
+            background: #ffe5d0;
+            color: #8a3d00;
+        }
+
+        .status-won {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .status-lost {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        .lead-counts {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(145px, 1fr));
+            gap: 12px;
+            margin-bottom: 30px;
+        }
+
+	        .lead-count-card {
+	            background: white;
+	            border-radius: 12px;
+	            display: block;
+	            padding: 16px;
+	            border: 1px solid #d9e2dc;
+	            box-shadow: 0 8px 22px rgba(31, 41, 51, 0.06);
+            text-decoration: none;
+            transition: transform 0.15s ease, box-shadow 0.15s ease;
+        }
+
+        .lead-count-card:hover {
+	            box-shadow: 0 12px 24px rgba(31, 41, 51, 0.11);
+            transform: translateY(-2px);
+        }
+
+        .lead-count-card .count {
+	            color: #1f2933;
+            font-size: 28px;
+            font-weight: 700;
+            line-height: 1.1;
+            margin-top: 8px;
+        }
+
+        .view-btn {
+            display: inline-block;
+            padding: 6px 12px;
+	            background: #0f766e;
+            color: white;
+            text-decoration: none;
+            border-radius: 4px;
+            font-size: 12px;
+            transition: background 0.3s;
+        }
+
+        .view-btn:hover {
+	            background: #115e59;
+        }
+
+	        .pagination {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 10px;
+	            padding: 20px;
+	            background: white;
+	            border-radius: 12px;
+	            margin-top: 30px;
+	            border: 1px solid #d9e2dc;
+	            box-shadow: 0 8px 22px rgba(31, 41, 51, 0.06);
+	        }
+
+        .pagination a,
+        .pagination span {
+            padding: 8px 16px;
+	            border: 1px solid #d9e2dc;
+	            border-radius: 6px;
+	            text-decoration: none;
+	            color: #64746a;
+            font-size: 14px;
+        }
+
+        .pagination a:hover {
+	            background: #0f766e;
+	            color: white;
+	            border-color: #0f766e;
+	        }
+
+        .pagination .current {
+	            background: #0f766e;
+	            color: white;
+	            border-color: #0f766e;
+        }
+
+        .pagination .disabled {
+            color: #ccc;
+            cursor: not-allowed;
+        }
+
+        .no-results {
+            text-align: center;
+            padding: 40px;
+            color: #666;
+        }
+
+        .search-keyword {
+            font-weight: 500;
+	            color: #1f2933;
+        }
+
+        .meta-info {
+            font-size: 12px;
+	            color: #7a8a80;
+            margin-top: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Search History</h1>
+            <p>View and manage your past Google Maps searches</p>
+            <a href="/" class="back-btn">← Back to Search</a>
+        </div>
+
+        <div class="lead-counts">
+            {% for item in lead_status_counts %}
+            <a href="{{ url_for('search_history.companies', lead_status=item.status) }}" class="lead-count-card">
+                <span class="status-badge status-{{ item.status|lower|replace(' ', '-') }}">{{ item.status }}</span>
+                <div class="count">{{ item.count }}</div>
+            </a>
+            {% endfor %}
+        </div>
+
+        <div class="filters">
+            <h3>Filter Searches</h3>
+            <form method="GET" action="{{ url_for('search_history.index') }}">
+                <div class="filter-row">
+                    <div class="filter-group">
+                        <label for="status">Status</label>
+                        <select id="status" name="status">
+                            <option value="">All Statuses</option>
+                            <option value="completed" {% if status_filter == 'completed' %}selected{% endif %}>Completed</option>
+                            <option value="running" {% if status_filter == 'running' %}selected{% endif %}>Running</option>
+                            <option value="failed" {% if status_filter == 'failed' %}selected{% endif %}>Failed</option>
+	                            <option value="pending" {% if status_filter == 'pending' %}selected{% endif %}>Pending</option>
+	                        </select>
+	                    </div>
+                    <div class="filter-group">
+                        <label for="lead_status">Lead Status</label>
+                        <select id="lead_status" name="lead_status">
+                            <option value="">All Lead Statuses</option>
+                            {% for lead_status in lead_statuses %}
+                            <option value="{{ lead_status }}" {% if lead_status_filter == lead_status %}selected{% endif %}>{{ lead_status }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+	                    <div class="filter-group">
+	                        <label for="country">Country</label>
+	                        <select id="country" name="country">
+                            <option value="">All Countries</option>
+                            {% for country in countries %}
+                            <option value="{{ country }}" {% if country_filter == country %}selected{% endif %}>{{ country }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="filter-group">
+                        <label for="industry">Industry</label>
+                        <select id="industry" name="industry">
+                            <option value="">All Industries</option>
+                            {% for industry in industries %}
+                            <option value="{{ industry }}" {% if industry_filter == industry %}selected{% endif %}>{{ industry }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="filter-group">
+                        <label for="keyword">Keyword</label>
+                        <input type="text" id="keyword" name="keyword" value="{{ keyword_filter }}" placeholder="Search keyword...">
+                    </div>
+                </div>
+                <button type="submit" class="back-btn">Apply Filters</button>
+                <a href="{{ url_for('search_history.index') }}" class="clear-filters">Clear Filters</a>
+            </form>
+        </div>
+
+        {% if search_jobs %}
+        <div class="search-jobs-table">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Search Keyword</th>
+                        <th>Country</th>
+                        <th>Status</th>
+                        <th>Leads Found</th>
+                        <th>Created</th>
+                        <th>Duration</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for job in search_jobs %}
+                    <tr>
+                        <td>
+                            <div class="search-keyword">{{ job.search_keyword }}</div>
+                            {% if job.search_strings and job.search_strings is not string and job.search_strings is not mapping and job.search_strings|length > 1 %}
+                            <div class="meta-info">+{{ job.search_strings|length - 1 }} more</div>
+                            {% endif %}
+                        </td>
+                        <td>{{ job.country }}</td>
+                        <td>
+                            <span class="status-badge status-{{ job.status }}">{{ job.status|capitalize }}</span>
+                        </td>
+                        <td>{{ job.leads_found }}</td>
+                        <td>{{ job.created_at[:16] if job.created_at else '-' }}</td>
+                        <td>
+                            {% if job.duration_seconds is not none %}
+                            {{ job.duration_seconds }}s
+                            {% else %}
+                            -
+                            {% endif %}
+                        </td>
+                        <td>
+                            <a href="{{ url_for('search_history.detail', search_job_id=job.id) }}" class="view-btn">View Results</a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        {% if pagination.pages > 1 %}
+        <div class="pagination">
+            {% if pagination.has_prev %}
+            <a href="{{ url_for('search_history.index', page=pagination.prev_num, status=status_filter, lead_status=lead_status_filter, country=country_filter, industry=industry_filter, keyword=keyword_filter) }}">← Previous</a>
+            {% else %}
+            <span class="disabled">← Previous</span>
+            {% endif %}
+
+            {% for page_num in range(1, pagination.pages + 1) %}
+                {% if page_num == pagination.page %}
+                <span class="current">{{ page_num }}</span>
+                {% else %}
+                <a href="{{ url_for('search_history.index', page=page_num, status=status_filter, lead_status=lead_status_filter, country=country_filter, industry=industry_filter, keyword=keyword_filter) }}">{{ page_num }}</a>
+                {% endif %}
+            {% endfor %}
+
+            {% if pagination.has_next %}
+            <a href="{{ url_for('search_history.index', page=pagination.next_num, status=status_filter, lead_status=lead_status_filter, country=country_filter, industry=industry_filter, keyword=keyword_filter) }}">Next →</a>
+            {% else %}
+            <span class="disabled">Next →</span>
+            {% endif %}
+        </div>
+        {% endif %}
+
+        {% else %}
+        <div class="no-results">
+            <h3>No search jobs found</h3>
+            <p>Try adjusting your filters or start a new search.</p>
+        </div>
+        {% endif %}
+    </div>
+</body>
+</html>

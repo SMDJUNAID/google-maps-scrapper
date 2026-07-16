@@ -5,26 +5,29 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Google Maps Business Scraper</title>
   <style>
-    :root {
-      --bg: #0f1419;
-      --surface: #1a2332;
-      --surface-2: #243044;
-      --border: #2d3a4f;
-      --text: #e8edf4;
-      --muted: #8b9cb3;
-      --accent: #3b82f6;
-      --accent-hover: #2563eb;
-      --success: #22c55e;
-      --danger: #ef4444;
-      --radius: 10px;
-    }
+	    :root {
+	      --bg: #f3f6f4;
+	      --surface: #ffffff;
+	      --surface-2: #f7faf8;
+	      --border: #d9e2dc;
+	      --text: #1f2933;
+	      --muted: #64746a;
+	      --accent: #0f766e;
+	      --accent-hover: #115e59;
+	      --warm: #d97706;
+	      --success: #15803d;
+	      --danger: #b91c1c;
+	      --radius: 10px;
+	    }
 
     * { box-sizing: border-box; margin: 0; padding: 0; }
 
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      background: var(--bg);
-      color: var(--text);
+	    body {
+	      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+	      background:
+	        linear-gradient(180deg, rgba(15, 118, 110, 0.08), rgba(217, 119, 6, 0.04) 42%, transparent 72%),
+	        var(--bg);
+	      color: var(--text);
       line-height: 1.5;
       min-height: 100vh;
     }
@@ -35,9 +38,17 @@
       padding: 2rem 1.5rem 4rem;
     }
 
-    header {
-      margin-bottom: 2rem;
-    }
+	    header {
+	      margin-bottom: 2rem;
+	      display: flex;
+	      justify-content: space-between;
+	      align-items: center;
+	      background: var(--surface);
+	      border: 1px solid var(--border);
+	      border-radius: var(--radius);
+	      padding: 1.25rem 1.5rem;
+	      box-shadow: 0 10px 28px rgba(31, 41, 51, 0.08);
+	    }
 
     header h1 {
       font-size: 1.75rem;
@@ -50,13 +61,28 @@
       font-size: 0.95rem;
     }
 
-    .card {
-      background: var(--surface);
-      border: 1px solid var(--border);
+	    .history-btn {
+	      padding: 0.5rem 1rem;
+	      background: var(--accent);
+      color: white;
+      text-decoration: none;
       border-radius: var(--radius);
-      padding: 1.5rem;
-      margin-bottom: 1.5rem;
+      font-weight: 500;
+      transition: background 0.3s;
     }
+
+    .history-btn:hover {
+      background: var(--accent-hover);
+    }
+
+	    .card {
+	      background: var(--surface);
+	      border: 1px solid var(--border);
+	      border-radius: var(--radius);
+	      padding: 1.5rem;
+	      margin-bottom: 1.5rem;
+	      box-shadow: 0 8px 22px rgba(31, 41, 51, 0.06);
+	    }
 
     .card h2 {
       font-size: 1.1rem;
@@ -83,13 +109,13 @@
     }
 
     input[type="text"],
-    input[type="number"] {
-      width: 100%;
-      padding: 0.65rem 0.85rem;
-      background: var(--surface-2);
+	    input[type="number"] {
+	      width: 100%;
+	      padding: 0.65rem 0.85rem;
+	      background: var(--surface-2);
       border: 1px solid var(--border);
       border-radius: 8px;
-      color: var(--text);
+	      color: var(--text);
       font-size: 0.95rem;
     }
 
@@ -113,11 +139,11 @@
       cursor: pointer;
     }
 
-    input:focus {
-      outline: none;
-      border-color: var(--accent);
-      box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
-    }
+	    input:focus {
+	      outline: none;
+	      border-color: var(--accent);
+	      box-shadow: 0 0 0 3px rgba(15, 118, 110, 0.16);
+	    }
 
     .search-strings {
       margin-top: 0.5rem;
@@ -165,9 +191,9 @@
       border: 1px solid var(--border);
     }
 
-    .btn-secondary:hover:not(:disabled) {
-      background: var(--border);
-    }
+	    .btn-secondary:hover:not(:disabled) {
+	      background: #edf5f1;
+	    }
 
     .btn-danger {
       background: transparent;
@@ -263,7 +289,7 @@
       margin-bottom: 0.65rem;
     }
 
-    .table-wrap {
+	    .table-wrap {
       overflow-x: auto;
       overflow-y: auto;
       max-width: 100%;
@@ -271,7 +297,7 @@
       border-radius: 8px;
       -webkit-overflow-scrolling: touch;
       scrollbar-width: thin;
-      scrollbar-color: var(--accent) var(--surface-2);
+	      scrollbar-color: var(--accent) var(--surface-2);
     }
 
     .table-wrap::-webkit-scrollbar {
@@ -311,14 +337,14 @@
       text-overflow: ellipsis;
     }
 
-    th.col-sticky,
-    td.col-sticky {
+	    th.col-sticky,
+	    td.col-sticky {
       position: sticky;
       left: 0;
       z-index: 2;
-      background: var(--surface);
-      box-shadow: 2px 0 6px rgba(0, 0, 0, 0.15);
-    }
+	      background: var(--surface);
+	      box-shadow: 2px 0 6px rgba(31, 41, 51, 0.08);
+	    }
 
     th.col-sticky {
       background: var(--surface-2);
@@ -347,7 +373,7 @@
       white-space: nowrap;
     }
 
-    tr:hover td { background: rgba(59, 130, 246, 0.05); }
+	    tr:hover td { background: rgba(15, 118, 110, 0.05); }
 
     td a {
       color: var(--accent);
@@ -359,11 +385,11 @@
 
     .empty-cell { color: var(--muted); }
 
-    .error-box {
-      display: none;
-      background: rgba(239, 68, 68, 0.1);
-      border: 1px solid var(--danger);
-      color: #fca5a5;
+	    .error-box {
+	      display: none;
+	      background: rgba(185, 28, 28, 0.08);
+	      border: 1px solid var(--danger);
+	      color: var(--danger);
       padding: 0.85rem 1rem;
       border-radius: 8px;
       margin-bottom: 1rem;
@@ -378,8 +404,11 @@
 <body>
   <div class="container">
     <header>
-      <h1>Google Maps Business Scraper</h1>
-      <p>Search wholesalers, distributors, importers, and suppliers by country on Google Maps.</p>
+      <div>
+        <h1>Google Maps Business Scraper</h1>
+        <p>Search wholesalers, distributors, importers, and suppliers by country on Google Maps.</p>
+      </div>
+      <a href="{{ url_for('search_history.index') }}" class="history-btn">Search History</a>
     </header>
 
     <div id="errorBox" class="error-box"></div>

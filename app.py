@@ -10,7 +10,12 @@ from datetime import datetime, timezone
 from typing import Any
 
 from flask import Flask, jsonify, render_template, request, send_file
+from flask_migrate import Migrate
 
+from config import get_config
+from extensions import db
+from models import Company, Contact, SearchJob, SearchResult
+from search_history import search_history_bp
 from scraper.contact_finder import enrich_results_combined
 from scraper.email_finder import enrich_results_with_emails
 from scraper.export import to_excel_bytes_from_dicts, to_json_bytes_from_dicts
@@ -19,6 +24,14 @@ from scraper.models import ScrapeConfig
 from scraper.social_finder import enrich_results_with_social
 
 app = Flask(__name__)
+app.config.from_object(get_config())
+
+# Initialize database
+db.init_app(app)
+migrate = Migrate(app, db)
+
+# Register blueprints
+app.register_blueprint(search_history_bp)
 
 DEFAULT_SEARCH_STRINGS = [
     "Pharmaceutical importers",
@@ -48,6 +61,24 @@ class ScrapeJob:
 
 jobs: dict[str, ScrapeJob] = {}
 jobs_lock = threading.Lock()
+
+SEARCH_JOB_UPDATE_COLUMNS = {
+    "status",
+    "message",
+    "stage",
+    "current",
+    "total",
+    "error",
+    "country",
+    "state",
+    "city",
+    "industry",
+    "max_results",
+    "search_strings",
+    "auto_fetch_emails",
+    "auto_fetch_social",
+    "completed_at",
+}
 
 
 def _validate_scrape_payload(payload: dict[str, Any]) -> tuple[Any, int] | None:
@@ -167,6 +198,16 @@ def _update_job(job_id: str, **kwargs: Any) -> None:
             for key, value in kwargs.items():
                 setattr(job, key, value)
 
+    # Also update scalar database columns. Relationship fields such as
+    # SearchJob.results must be written via _save_results_to_database().
+    with app.app_context():
+        db_job = db.session.get(SearchJob, job_id)
+        if db_job:
+            for key, value in kwargs.items():
+                if key in SEARCH_JOB_UPDATE_COLUMNS:
+                    setattr(db_job, key, value)
+            db.session.commit()
+
 
 def _run_social_enrichment(job_id: str, results: list[dict[str, Any]]) -> list[dict[str, Any]]:
     def on_progress(stage: str, message: str, current: int, total: int) -> None:
@@ -201,6 +242,8 @@ def _run_social_enrichment(job_id: str, results: list[dict[str, Any]]) -> list[d
         total=len(enriched),
         error=None,
     )
+    # Save enriched results to database
+    _save_results_to_database(job_id, enriched)
     return enriched
 
 
@@ -243,6 +286,8 @@ def _run_combined_enrichment(job_id: str, results: list[dict[str, Any]]) -> list
         total=len(enriched),
         error=None,
     )
+    # Save enriched results to database
+    _save_results_to_database(job_id, enriched)
     return enriched
 
 
@@ -276,6 +321,8 @@ def _run_email_enrichment(job_id: str, results: list[dict[str, Any]]) -> list[di
             message=f"Email fetch complete — {with_emails} of {len(enriched)} businesses have emails.",
             error=None,
         )
+        # Save enriched results to database
+        _save_results_to_database(job_id, enriched)
         return enriched
     except Exception as exc:
         _update_job(
@@ -330,6 +377,90 @@ def _run_post_scrape_enrichment(
         return
 
 
+def _clean_optional_text(value: Any) -> str | None:
+    """Store missing optional unique fields as NULL, not empty strings."""
+    if value is None:
+        return None
+    cleaned = str(value).strip()
+    return cleaned or None
+
+
+def _save_results_to_database(job_id: str, results: list[dict[str, Any]]) -> None:
+    """Save scrape results to database using new models with duplicate detection."""
+    with app.app_context():
+        # Clear existing results for this job
+        SearchResult.query.filter_by(search_job_id=job_id).delete()
+        
+        # Add new results
+        for result in results:
+            # Find or create company using place_url and website for duplicate detection
+            place_url = _clean_optional_text(result.get("place_url"))
+            website = _clean_optional_text(result.get("website"))
+            
+            company = None
+            if place_url:
+                company = Company.query.filter_by(place_url=place_url).first()
+            elif website:
+                company = Company.query.filter_by(website=website).first()
+            
+            if not company:
+                company = Company(
+                    name=result.get("name", ""),
+                    address=result.get("address", ""),
+                    website=website,
+                    category=result.get("category", ""),
+                    rating=result.get("rating", ""),
+                    reviews_count=result.get("reviews_count", ""),
+                    place_url=place_url,
+                    country=result.get("country", ""),
+                    industry=result.get("industry", ""),
+                )
+                db.session.add(company)
+                db.session.flush()  # Get the company ID
+            else:
+                # Update existing company with fresh data
+                company.name = result.get("name", company.name)
+                company.address = result.get("address", company.address)
+                company.category = result.get("category", company.category)
+                company.rating = result.get("rating", company.rating)
+                company.reviews_count = result.get("reviews_count", company.reviews_count)
+                company.country = result.get("country", company.country)
+                company.industry = result.get("industry", company.industry)
+                if website and not company.website:
+                    company.website = website
+                if place_url and not company.place_url:
+                    company.place_url = place_url
+            
+            # Keep one current general contact per company. Re-scrapes update
+            # the latest contact row instead of adding another card every time.
+            if result.get("phone") or result.get("email") or result.get("linkedin") or result.get("instagram") or result.get("whatsapp"):
+                contact = (
+                    Contact.query.filter_by(company_id=company.id, contact_type="general")
+                    .order_by(Contact.updated_at.desc(), Contact.created_at.desc(), Contact.id.desc())
+                    .first()
+                )
+                if not contact:
+                    contact = Contact(company_id=company.id, contact_type="general")
+                    db.session.add(contact)
+
+                contact.phone = result.get("phone", "") or contact.phone
+                contact.email = result.get("email", "") or contact.email
+                contact.linkedin = result.get("linkedin", "") or contact.linkedin
+                contact.instagram = result.get("instagram", "") or contact.instagram
+                contact.whatsapp = result.get("whatsapp", "") or contact.whatsapp
+            
+            # Create search result
+            search_result = SearchResult(
+                search_job_id=job_id,
+                company_id=company.id,
+                search_query=result.get("search_query", ""),
+                raw_data=result,
+            )
+            db.session.add(search_result)
+        
+        db.session.commit()
+
+
 def _run_scrape(
     job_id: str,
     config: ScrapeConfig,
@@ -360,6 +491,12 @@ def _run_scrape(
                 current=0,
                 total=0,
             )
+            # Update database completion time
+            with app.app_context():
+                db_job = db.session.get(SearchJob, job_id)
+                if db_job:
+                    db_job.completed_at = datetime.now(timezone.utc)
+                    db.session.commit()
             return
 
         _update_job(
@@ -369,6 +506,9 @@ def _run_scrape(
             total=len(data),
             message=f"Scrape complete — {len(data)} businesses found.",
         )
+        
+        # Save results to database
+        _save_results_to_database(job_id, data)
 
         if auto_fetch_emails or auto_fetch_social:
             _run_post_scrape_enrichment(job_id, data, auto_fetch_emails, auto_fetch_social)
@@ -379,6 +519,12 @@ def _run_scrape(
             status="completed",
             stage="done",
         )
+        # Update database completion time
+        with app.app_context():
+            db_job = db.session.get(SearchJob, job_id)
+            if db_job:
+                db_job.completed_at = datetime.now(timezone.utc)
+                db.session.commit()
     except Exception as exc:
         _update_job(
             job_id,
@@ -387,6 +533,12 @@ def _run_scrape(
             message="Scrape failed.",
             error=str(exc),
         )
+        # Update database with error
+        with app.app_context():
+            db_job = db.session.get(SearchJob, job_id)
+            if db_job:
+                db_job.completed_at = datetime.now(timezone.utc)
+                db.session.commit()
 
 
 @app.route("/")
@@ -418,6 +570,27 @@ def start_scrape():
 
     with jobs_lock:
         jobs[job_id] = job
+    
+    # Save to database
+    with app.app_context():
+        db_job = SearchJob(
+            id=job_id,
+            status="pending",
+            message="Starting scrape...",
+            stage="pending",
+            current=0,
+            total=config.max_results,
+            country=config.country,
+            state=payload.get("state", ""),
+            city=payload.get("city", ""),
+            industry=config.industry,
+            max_results=config.max_results,
+            search_strings=config.search_strings,
+            auto_fetch_emails=auto_fetch_emails,
+            auto_fetch_social=auto_fetch_social,
+        )
+        db.session.add(db_job)
+        db.session.commit()
 
     thread = threading.Thread(
         target=_run_scrape,
