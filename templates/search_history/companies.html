@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Companies - {{ lead_status_filter or 'All Leads' }}</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+	        body {
+	            background: linear-gradient(180deg, rgba(15, 118, 110, 0.09), rgba(217, 119, 6, 0.05) 45%, #f3f6f4 100%);
+	            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            margin: 0 auto;
+            max-width: 1400px;
+        }
+
+        .header,
+        .filters,
+        .companies-table,
+        .pagination {
+	            background: white;
+	            border-radius: 12px;
+	            border: 1px solid #d9e2dc;
+	            box-shadow: 0 8px 22px rgba(31, 41, 51, 0.06);
+        }
+
+        .header {
+            align-items: flex-start;
+            display: flex;
+            gap: 20px;
+            justify-content: space-between;
+            margin-bottom: 24px;
+            padding: 30px;
+        }
+
+        .header h1 {
+	            color: #1f2933;
+            margin-bottom: 8px;
+        }
+
+        .header p {
+	            color: #64746a;
+        }
+
+        .actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        .btn {
+            border-radius: 6px;
+            display: inline-block;
+            font-size: 14px;
+            font-weight: 600;
+            padding: 10px 16px;
+            text-decoration: none;
+        }
+
+        .btn-primary {
+	            background: #0f766e;
+	            color: white;
+        }
+
+        .btn-secondary {
+	            background: #f7faf8;
+	            border: 1px solid #d9e2dc;
+	            color: #64746a;
+        }
+
+        .filters {
+            margin-bottom: 24px;
+            padding: 20px;
+        }
+
+        .filter-row {
+            align-items: end;
+            display: grid;
+            gap: 15px;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        }
+
+        label {
+	            color: #64746a;
+            display: block;
+            font-size: 14px;
+            font-weight: 600;
+            margin-bottom: 6px;
+        }
+
+        select {
+	            border: 1px solid #d9e2dc;
+	            border-radius: 6px;
+	            font-size: 14px;
+	            padding: 10px;
+	            width: 100%;
+	            background: #f7faf8;
+	            color: #1f2933;
+        }
+
+        table {
+            border-collapse: collapse;
+            width: 100%;
+        }
+
+        .companies-table {
+            overflow: hidden;
+        }
+
+        thead {
+	            background: #f7faf8;
+        }
+
+        th,
+        td {
+	            border-bottom: 1px solid #e6eee9;
+	            color: #64746a;
+            font-size: 14px;
+            padding: 14px;
+            text-align: left;
+            vertical-align: top;
+        }
+
+        th {
+	            color: #1f2933;
+            font-weight: 700;
+        }
+
+        tr:hover {
+	            background: #f7faf8;
+        }
+
+        .company-name {
+	            color: #1f2933;
+            font-weight: 700;
+            text-decoration: none;
+        }
+
+        .company-name:hover,
+        .link:hover {
+            text-decoration: underline;
+        }
+
+        .link {
+	            color: #0f766e;
+            text-decoration: none;
+            word-break: break-word;
+        }
+
+        .muted {
+	            color: #7a8a80;
+            font-size: 12px;
+            margin-top: 4px;
+        }
+
+        .status-badge {
+            border-radius: 999px;
+            display: inline-block;
+            font-size: 12px;
+            font-weight: 700;
+            padding: 5px 12px;
+            white-space: nowrap;
+        }
+
+        .status-new { background: #e2e3e5; color: #41464b; }
+        .status-qualified { background: #cfe2ff; color: #084298; }
+        .status-contacted { background: #cff4fc; color: #055160; }
+        .status-interested { background: #fff3cd; color: #856404; }
+	        .status-meeting-scheduled { background: #ccfbf1; color: #115e59; }
+        .status-proposal-sent { background: #d3d3d4; color: #141619; }
+        .status-negotiation { background: #ffe5d0; color: #8a3d00; }
+        .status-won { background: #d4edda; color: #155724; }
+        .status-lost { background: #f8d7da; color: #721c24; }
+
+        .pagination {
+            align-items: center;
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            margin-top: 24px;
+            padding: 18px;
+        }
+
+        .pagination a,
+        .pagination span {
+	            border: 1px solid #d9e2dc;
+            border-radius: 6px;
+	            color: #64746a;
+            font-size: 14px;
+            padding: 8px 14px;
+            text-decoration: none;
+        }
+
+        .pagination .current,
+        .pagination a:hover {
+	            background: #0f766e;
+	            border-color: #0f766e;
+            color: white;
+        }
+
+        .pagination .disabled {
+            color: #bbb;
+        }
+
+        .no-results {
+            background: white;
+            border-radius: 12px;
+	            box-shadow: 0 8px 22px rgba(31, 41, 51, 0.06);
+	            color: #64746a;
+            padding: 40px;
+            text-align: center;
+        }
+
+        @media (max-width: 900px) {
+            .header,
+            .filter-row {
+                display: block;
+            }
+
+            .actions {
+                margin-top: 16px;
+            }
+
+            .companies-table {
+                overflow-x: auto;
+            }
+
+            table {
+                min-width: 900px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div>
+                <h1>{{ lead_status_filter or 'All Companies' }}</h1>
+                <p>{{ pagination.total }} compan{{ 'y' if pagination.total == 1 else 'ies' }} found</p>
+            </div>
+            <div class="actions">
+                <a href="{{ url_for('search_history.index') }}" class="btn btn-secondary">Dashboard</a>
+                <a href="{{ url_for('search_history.companies') }}" class="btn btn-primary">All Companies</a>
+            </div>
+        </div>
+
+        <div class="filters">
+            <form method="GET" action="{{ url_for('search_history.companies') }}">
+                <div class="filter-row">
+                    <div>
+                        <label for="lead_status">Lead Status</label>
+                        <select id="lead_status" name="lead_status">
+                            <option value="">All Lead Statuses</option>
+                            {% for lead_status in lead_statuses %}
+                            <option value="{{ lead_status }}" {% if lead_status_filter == lead_status %}selected{% endif %}>{{ lead_status }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div>
+                        <label for="country">Country</label>
+                        <input id="country" name="country" value="{{ country_filter }}" placeholder="Country..." style="border: 1px solid #d9e2dc; border-radius: 6px; font-size: 14px; padding: 10px; width: 100%; background: #f7faf8; color: #1f2933;">
+                    </div>
+                    <div>
+                        <label for="industry">Industry</label>
+                        <input id="industry" name="industry" value="{{ industry_filter }}" placeholder="Industry..." style="border: 1px solid #d9e2dc; border-radius: 6px; font-size: 14px; padding: 10px; width: 100%; background: #f7faf8; color: #1f2933;">
+                    </div>
+                    <div>
+                        <label for="keyword">Company</label>
+                        <input id="keyword" name="keyword" value="{{ keyword_filter }}" placeholder="Company name..." style="border: 1px solid #d9e2dc; border-radius: 6px; font-size: 14px; padding: 10px; width: 100%; background: #f7faf8; color: #1f2933;">
+                    </div>
+                    <div>
+                        <label>&nbsp;</label>
+                        <button type="submit" class="btn btn-primary" style="border: 0; cursor: pointer;">Apply Filter</button>
+                    </div>
+                </div>
+            </form>
+        </div>
+
+        {% if companies %}
+        <div class="companies-table">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Company</th>
+                        <th>Status</th>
+                        <th>Contact</th>
+                        <th>Website</th>
+                        <th>Category</th>
+                        <th>Country</th>
+                        <th>Updated</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for company in companies %}
+                    <tr>
+                        <td>
+                            <a href="{{ url_for('search_history.company_detail', company_id=company.id) }}" class="company-name">{{ company.name }}</a>
+                            <div class="muted">ID {{ company.id }}</div>
+                        </td>
+                        <td>
+                            <span class="status-badge status-{{ company.lead_status|lower|replace(' ', '-') }}">{{ company.lead_status }}</span>
+                        </td>
+                        <td>
+                            {% if company.phone %}
+                            <div>{{ company.phone }}</div>
+                            {% endif %}
+                            {% if company.email %}
+                            <a href="mailto:{{ company.email }}" class="link">{{ company.email }}</a>
+                            {% endif %}
+                            {% if not company.phone and not company.email %}
+                            -
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if company.website %}
+                            <a href="{{ company.website }}" target="_blank" rel="noopener" class="link">{{ company.website }}</a>
+                            {% else %}
+                            -
+                            {% endif %}
+                        </td>
+                        <td>{{ company.category or '-' }}</td>
+                        <td>{{ company.country or '-' }}</td>
+                        <td>{{ company.updated_at[:19] if company.updated_at else '-' }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        {% if pagination.pages > 1 %}
+        <div class="pagination">
+            {% if pagination.has_prev %}
+            <a href="{{ url_for('search_history.companies', page=pagination.prev_num, lead_status=lead_status_filter, country=country_filter, industry=industry_filter, keyword=keyword_filter) }}">Previous</a>
+            {% else %}
+            <span class="disabled">Previous</span>
+            {% endif %}
+
+            {% for page_num in range(1, pagination.pages + 1) %}
+                {% if page_num == pagination.page %}
+                <span class="current">{{ page_num }}</span>
+                {% else %}
+                <a href="{{ url_for('search_history.companies', page=page_num, lead_status=lead_status_filter, country=country_filter, industry=industry_filter, keyword=keyword_filter) }}">{{ page_num }}</a>
+                {% endif %}
+            {% endfor %}
+
+            {% if pagination.has_next %}
+            <a href="{{ url_for('search_history.companies', page=pagination.next_num, lead_status=lead_status_filter, country=country_filter, industry=industry_filter, keyword=keyword_filter) }}">Next</a>
+            {% else %}
+            <span class="disabled">Next</span>
+            {% endif %}
+        </div>
+        {% endif %}
+        {% else %}
+        <div class="no-results">
+            <h3>No companies found</h3>
+            <p>Try another status or clear the filter.</p>
+        </div>
+        {% endif %}
+    </div>
+</body>
+</html>

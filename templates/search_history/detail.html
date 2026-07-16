@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Search Results - {{ search_job.search_keyword }}</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+	        body {
+	            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+	            background: linear-gradient(180deg, rgba(15, 118, 110, 0.09), rgba(217, 119, 6, 0.05) 45%, #f3f6f4 100%);
+	            min-height: 100vh;
+	            padding: 20px;
+	        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+	        .header {
+	            background: white;
+	            border-radius: 12px;
+	            padding: 30px;
+	            margin-bottom: 30px;
+	            border: 1px solid #d9e2dc;
+	            box-shadow: 0 10px 28px rgba(31, 41, 51, 0.08);
+	        }
+
+        .header h1 {
+	            color: #1f2933;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+	            color: #64746a;
+            margin-bottom: 20px;
+        }
+
+        .back-btn {
+            display: inline-block;
+            padding: 10px 20px;
+	            background: #0f766e;
+            color: white;
+            text-decoration: none;
+            border-radius: 6px;
+            font-weight: 500;
+            transition: background 0.3s;
+        }
+
+        .back-btn:hover {
+	            background: #115e59;
+        }
+
+        .job-info {
+	            background: white;
+	            border-radius: 12px;
+	            padding: 25px;
+	            margin-bottom: 30px;
+	            border: 1px solid #d9e2dc;
+	            box-shadow: 0 8px 22px rgba(31, 41, 51, 0.06);
+        }
+
+        .job-info h2 {
+	            color: #1f2933;
+            margin-bottom: 20px;
+        }
+
+        .info-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+        }
+
+        .info-item {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .info-label {
+            font-size: 12px;
+	            color: #7a8a80;
+            margin-bottom: 5px;
+            font-weight: 500;
+        }
+
+        .info-value {
+            font-size: 16px;
+	            color: #1f2933;
+            font-weight: 500;
+        }
+
+        .status-badge {
+            display: inline-block;
+            padding: 5px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+
+        .status-completed {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .status-running {
+            background: #cce5ff;
+            color: #004085;
+        }
+
+        .status-failed {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        .status-pending {
+            background: #fff3cd;
+            color: #856404;
+        }
+
+        .status-new { background: #e2e3e5; color: #41464b; }
+        .status-qualified { background: #cfe2ff; color: #084298; }
+        .status-contacted { background: #cff4fc; color: #055160; }
+        .status-interested { background: #fff3cd; color: #856404; }
+	        .status-meeting-scheduled { background: #ccfbf1; color: #115e59; }
+        .status-proposal-sent { background: #d3d3d4; color: #141619; }
+        .status-negotiation { background: #ffe5d0; color: #8a3d00; }
+        .status-won { background: #d4edda; color: #155724; }
+        .status-lost { background: #f8d7da; color: #721c24; }
+
+        .companies-table {
+	            background: white;
+	            border-radius: 12px;
+	            overflow: hidden;
+	            border: 1px solid #d9e2dc;
+	            box-shadow: 0 8px 22px rgba(31, 41, 51, 0.06);
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        thead {
+	            background: #f7faf8;
+        }
+
+        th {
+            padding: 15px;
+            text-align: left;
+            font-weight: 600;
+	            color: #1f2933;
+            font-size: 14px;
+	            border-bottom: 2px solid #d9e2dc;
+        }
+
+        td {
+            padding: 15px;
+	            border-bottom: 1px solid #e6eee9;
+	            font-size: 14px;
+	            color: #64746a;
+        }
+
+        tr:hover {
+	            background: #f7faf8;
+        }
+
+        .company-name {
+            font-weight: 500;
+	            color: #1f2933;
+        }
+
+        .company-website {
+	            color: #0f766e;
+            text-decoration: none;
+        }
+
+        .company-website:hover {
+            text-decoration: underline;
+        }
+
+        .contact-info {
+            font-size: 12px;
+            color: #666;
+            margin-top: 5px;
+        }
+
+	        .pagination {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 10px;
+	            padding: 20px;
+	            background: white;
+	            border-radius: 12px;
+	            margin-top: 30px;
+	            border: 1px solid #d9e2dc;
+	            box-shadow: 0 8px 22px rgba(31, 41, 51, 0.06);
+	        }
+
+        .pagination a,
+        .pagination span {
+            padding: 8px 16px;
+	            border: 1px solid #d9e2dc;
+            border-radius: 6px;
+            text-decoration: none;
+	            color: #64746a;
+            font-size: 14px;
+        }
+
+        .pagination a:hover {
+	            background: #0f766e;
+	            color: white;
+	            border-color: #0f766e;
+        }
+
+        .pagination .current {
+	            background: #0f766e;
+	            color: white;
+	            border-color: #0f766e;
+        }
+
+        .pagination .disabled {
+            color: #ccc;
+            cursor: not-allowed;
+        }
+
+        .no-results {
+            text-align: center;
+            padding: 40px;
+	            color: #64746a;
+        }
+
+        .search-strings {
+            margin-top: 10px;
+        }
+
+        .search-strings span {
+            display: inline-block;
+	            background: #edf5f1;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            margin-right: 5px;
+            margin-bottom: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Search Results</h1>
+            <p>View companies found in this search</p>
+            <a href="{{ url_for('search_history.index') }}" class="back-btn">← Back to History</a>
+        </div>
+
+        <div class="job-info">
+            <h2>Job Details</h2>
+            <div class="info-grid">
+                <div class="info-item">
+                    <span class="info-label">Status</span>
+                    <span class="info-value">
+                        <span class="status-badge status-{{ search_job.status }}">{{ search_job.status|capitalize }}</span>
+                    </span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Country</span>
+                    <span class="info-value">{{ search_job.country }}</span>
+                </div>
+                {% if search_job.state %}
+                <div class="info-item">
+                    <span class="info-label">State</span>
+                    <span class="info-value">{{ search_job.state }}</span>
+                </div>
+                {% endif %}
+                {% if search_job.city %}
+                <div class="info-item">
+                    <span class="info-label">City</span>
+                    <span class="info-value">{{ search_job.city }}</span>
+                </div>
+                {% endif %}
+                {% if search_job.industry %}
+                <div class="info-item">
+                    <span class="info-label">Industry</span>
+                    <span class="info-value">{{ search_job.industry }}</span>
+                </div>
+                {% endif %}
+                <div class="info-item">
+                    <span class="info-label">Leads Found</span>
+                    <span class="info-value">{{ search_job.leads_found }}</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Created</span>
+                    <span class="info-value">{{ search_job.created_at[:19] if search_job.created_at else '-' }}</span>
+                </div>
+                {% if search_job.completed_at %}
+                <div class="info-item">
+                    <span class="info-label">Completed</span>
+                    <span class="info-value">{{ search_job.completed_at[:19] if search_job.completed_at else '-' }}</span>
+                </div>
+                {% endif %}
+                <div class="info-item">
+                    <span class="info-label">Duration</span>
+                    <span class="info-value">
+                        {% if search_job.duration_seconds is not none %}
+                        {{ search_job.duration_seconds }}s
+                        {% else %}
+                        -
+                        {% endif %}
+                    </span>
+                </div>
+            </div>
+            <div class="search-strings">
+                <span class="info-label">Search Keywords:</span>
+                <div>
+                    {% if search_job.search_strings %}
+                        {% if search_job.search_strings is sequence %}
+                            {% for keyword in search_job.search_strings %}
+                            <span>{{ keyword }}</span>
+                            {% endfor %}
+                        {% else %}
+                            <span>{{ search_job.search_strings }}</span>
+                        {% endif %}
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        {% if search_results %}
+        <div class="companies-table">
+            <table>
+                <thead>
+                    <tr>
+	                        <th>Company</th>
+	                        <th>Lead Status</th>
+	                        <th>Address</th>
+	                        <th>Phone</th>
+                        <th>Website</th>
+                        <th>Category</th>
+                        <th>Rating</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for result in search_results %}
+                    {% set company = companies_dict.get(result.company_id) %}
+                    <tr>
+                        <td>
+                            {% if company %}
+                            <a href="{{ url_for('search_history.company_detail', company_id=company.id) }}" class="company-name company-website">
+                                {{ company.name }}
+                            </a>
+                            {% else %}
+                            <div class="company-name">Unknown</div>
+                            {% endif %}
+	                        </td>
+	                        <td>
+	                            {% if company %}
+	                            <span class="status-badge status-{{ company.lead_status|lower|replace(' ', '-') }}">{{ company.lead_status }}</span>
+	                            {% else %}
+	                            -
+	                            {% endif %}
+	                        </td>
+	                        <td>{{ company.address if company else '-' }}</td>
+                        <td>
+                            {% if company and company.contacts %}
+                                {% for contact in company.contacts[:1] %}
+                                    {{ contact.phone if contact.phone else '-' }}
+                                {% endfor %}
+                            {% else %}
+                                -
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if company and company.website %}
+                            <a href="{{ company.website }}" target="_blank" class="company-website">{{ company.website }}</a>
+                            {% else %}
+                                -
+                            {% endif %}
+                        </td>
+                        <td>{{ company.category if company else '-' }}</td>
+                        <td>
+                            {% if company and company.rating %}
+                            {{ company.rating }}
+                            {% if company.reviews_count %}
+                            ({{ company.reviews_count }})
+                            {% endif %}
+                            {% else %}
+                                -
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        {% if pagination.pages > 1 %}
+        <div class="pagination">
+            {% if pagination.has_prev %}
+            <a href="{{ url_for('search_history.detail', search_job_id=search_job.id, page=pagination.prev_num) }}">← Previous</a>
+            {% else %}
+            <span class="disabled">← Previous</span>
+            {% endif %}
+
+            {% for page_num in range(1, pagination.pages + 1) %}
+                {% if page_num == pagination.page %}
+                <span class="current">{{ page_num }}</span>
+                {% else %}
+                <a href="{{ url_for('search_history.detail', search_job_id=search_job.id, page=page_num) }}">{{ page_num }}</a>
+                {% endif %}
+            {% endfor %}
+
+            {% if pagination.has_next %}
+            <a href="{{ url_for('search_history.detail', search_job_id=search_job.id, page=pagination.next_num) }}">Next →</a>
+            {% else %}
+            <span class="disabled">Next →</span>
+            {% endif %}
+        </div>
+        {% endif %}
+
+        {% else %}
+        <div class="no-results">
+            <h3>No companies found for this search</h3>
+            <p>The search may still be running or no results were found.</p>
+        </div>
+        {% endif %}
+    </div>
+</body>
+</html>
