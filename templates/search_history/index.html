@@ -342,6 +342,10 @@
             <h1>Search History</h1>
             <p>View and manage your past Google Maps searches</p>
             <a href="/" class="back-btn">← Back to Search</a>
+            <a href="{{ url_for('search_history.dashboard') }}" class="clear-filters">Dashboard</a>
+            <a href="{{ url_for('search_history.companies') }}" class="clear-filters">Companies</a>
+            <a href="{{ url_for('search_history.email_templates') }}" class="clear-filters">Email Templates</a>
+            <a href="{{ url_for('search_history.email_campaigns') }}" class="clear-filters">Email Campaigns</a>
         </div>
 
         <div class="lead-counts">

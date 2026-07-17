@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard - Google Maps Scraper</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            background: linear-gradient(180deg, rgba(15, 118, 110, 0.09), rgba(217, 119, 6, 0.05) 45%, #f3f6f4 100%);
+            color: #1f2933;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .container { margin: 0 auto; max-width: 1400px; }
+        .header, .metric, .chart-panel {
+            background: white;
+            border: 1px solid #d9e2dc;
+            border-radius: 8px;
+            box-shadow: 0 8px 22px rgba(31, 41, 51, 0.06);
+        }
+        .header {
+            align-items: flex-start;
+            display: flex;
+            gap: 20px;
+            justify-content: space-between;
+            margin-bottom: 24px;
+            padding: 28px;
+        }
+        .header p, .metric span { color: #64746a; }
+        .actions { display: flex; flex-wrap: wrap; gap: 10px; }
+        .btn {
+            border-radius: 6px;
+            display: inline-block;
+            font-size: 14px;
+            font-weight: 700;
+            padding: 10px 16px;
+            text-decoration: none;
+        }
+        .btn-primary { background: #0f766e; color: white; }
+        .btn-secondary { background: #f7faf8; border: 1px solid #d9e2dc; color: #64746a; }
+        .metrics {
+            display: grid;
+            gap: 14px;
+            grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+            margin-bottom: 24px;
+        }
+        .metric { padding: 18px; }
+        .metric strong {
+            display: block;
+            font-size: 30px;
+            line-height: 1.1;
+            margin-top: 8px;
+        }
+        .charts {
+            display: grid;
+            gap: 24px;
+            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+        }
+        .chart-panel { padding: 20px; }
+        .chart-panel h2 { font-size: 18px; margin-bottom: 16px; }
+        .chart-box { height: 320px; position: relative; }
+        @media (max-width: 720px) {
+            .header { display: block; }
+            .actions { margin-top: 16px; }
+            .charts { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div>
+                <h1>Dashboard</h1>
+                <p>Lead, search, and growth metrics</p>
+            </div>
+            <div class="actions">
+                <a href="{{ url_for('search_history.companies') }}" class="btn btn-primary">Companies</a>
+                <a href="{{ url_for('search_history.email_campaigns') }}" class="btn btn-secondary">Campaigns</a>
+                <a href="{{ url_for('search_history.email_templates') }}" class="btn btn-secondary">Templates</a>
+                <a href="{{ url_for('search_history.index') }}" class="btn btn-secondary">Search History</a>
+                <a href="/" class="btn btn-secondary">New Search</a>
+            </div>
+        </div>
+
+        <div class="metrics">
+            <div class="metric"><span>Total Leads</span><strong>{{ metrics.total_leads }}</strong></div>
+            <div class="metric"><span>New Leads</span><strong>{{ metrics.new_leads }}</strong></div>
+            <div class="metric"><span>Qualified Leads</span><strong>{{ metrics.qualified_leads }}</strong></div>
+            <div class="metric"><span>Contacted Leads</span><strong>{{ metrics.contacted_leads }}</strong></div>
+            <div class="metric"><span>Won Leads</span><strong>{{ metrics.won_leads }}</strong></div>
+            <div class="metric"><span>Lost Leads</span><strong>{{ metrics.lost_leads }}</strong></div>
+            <div class="metric"><span>Searches Today</span><strong>{{ metrics.searches_today }}</strong></div>
+            <div class="metric"><span>Total Searches</span><strong>{{ metrics.total_searches }}</strong></div>
+        </div>
+
+        <div class="charts">
+            <section class="chart-panel">
+                <h2>Leads by Country</h2>
+                <div class="chart-box"><canvas id="countryChart"></canvas></div>
+            </section>
+            <section class="chart-panel">
+                <h2>Leads by Category</h2>
+                <div class="chart-box"><canvas id="categoryChart"></canvas></div>
+            </section>
+            <section class="chart-panel">
+                <h2>Lead Status</h2>
+                <div class="chart-box"><canvas id="statusChart"></canvas></div>
+            </section>
+            <section class="chart-panel">
+                <h2>Monthly Growth</h2>
+                <div class="chart-box"><canvas id="growthChart"></canvas></div>
+            </section>
+        </div>
+    </div>
+
+    <script>
+        const countryData = {{ leads_by_country|tojson }};
+        const categoryData = {{ leads_by_category|tojson }};
+        const statusData = {{ lead_status_counts|tojson }};
+        const growthData = {{ monthly_growth|tojson }};
+        const palette = ['#0f766e', '#d97706', '#2563eb', '#be123c', '#4d7c0f', '#7c3aed', '#0891b2', '#a16207', '#475569', '#db2777', '#16a34a', '#ea580c'];
+
+        function labels(rows) { return rows.map(row => row.label || row.status); }
+        function counts(rows) { return rows.map(row => row.count); }
+
+        new Chart(document.getElementById('countryChart'), {
+            type: 'bar',
+            data: { labels: labels(countryData), datasets: [{ data: counts(countryData), backgroundColor: palette }] },
+            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
+        });
+        new Chart(document.getElementById('categoryChart'), {
+            type: 'doughnut',
+            data: { labels: labels(categoryData), datasets: [{ data: counts(categoryData), backgroundColor: palette }] },
+            options: { responsive: true, maintainAspectRatio: false }
+        });
+        new Chart(document.getElementById('statusChart'), {
+            type: 'bar',
+            data: { labels: labels(statusData), datasets: [{ data: counts(statusData), backgroundColor: palette }] },
+            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
+        });
+        new Chart(document.getElementById('growthChart'), {
+            type: 'line',
+            data: { labels: labels(growthData), datasets: [{ data: counts(growthData), borderColor: '#0f766e', backgroundColor: 'rgba(15, 118, 110, 0.14)', fill: true, tension: 0.25 }] },
+            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
+        });
+    </script>
+</body>
+</html>

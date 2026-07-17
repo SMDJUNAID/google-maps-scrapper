@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Email Campaigns</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { background: #f3f6f4; color: #1f2933; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; min-height: 100vh; padding: 20px; }
+        .container { margin: 0 auto; max-width: 1300px; }
+        .header, .panel { background: white; border: 1px solid #d9e2dc; border-radius: 8px; box-shadow: 0 8px 22px rgba(31, 41, 51, 0.06); }
+        .header { align-items: flex-start; display: flex; gap: 20px; justify-content: space-between; margin-bottom: 24px; padding: 28px; }
+        .header p, .muted { color: #64746a; }
+        .actions { display: flex; flex-wrap: wrap; gap: 10px; }
+        .btn { border: 0; border-radius: 6px; cursor: pointer; display: inline-block; font-size: 14px; font-weight: 700; padding: 10px 16px; text-decoration: none; }
+        .btn-primary { background: #0f766e; color: white; }
+        .btn-secondary { background: #f7faf8; border: 1px solid #d9e2dc; color: #64746a; }
+        .panel { overflow: hidden; }
+        table { border-collapse: collapse; width: 100%; }
+        th, td { border-bottom: 1px solid #e6eee9; padding: 14px; text-align: left; vertical-align: top; }
+        th { background: #f7faf8; color: #1f2933; font-size: 14px; }
+        td { color: #64746a; font-size: 14px; }
+        .name { color: #1f2933; font-weight: 800; }
+        .badge { border-radius: 999px; display: inline-block; font-size: 12px; font-weight: 800; padding: 5px 10px; }
+        .status-sent { background: #d4edda; color: #155724; }
+        .status-scheduled { background: #fff3cd; color: #856404; }
+        .status-draft { background: #e2e3e5; color: #41464b; }
+        @media (max-width: 850px) { .header { display: block; } .actions { margin-top: 16px; } .panel { overflow-x: auto; } table { min-width: 850px; } }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div>
+                <h1>Email Campaigns</h1>
+                <p>Send now, schedule later, and review delivery history.</p>
+            </div>
+            <div class="actions">
+                <a href="{{ url_for('search_history.new_email_campaign') }}" class="btn btn-primary">New Campaign</a>
+                <a href="{{ url_for('search_history.email_templates') }}" class="btn btn-secondary">Templates</a>
+                <a href="{{ url_for('search_history.follow_ups') }}" class="btn btn-secondary">Follow-ups</a>
+                <form method="POST" action="{{ url_for('search_history.process_scheduled_campaigns') }}">
+                    <button class="btn btn-secondary" type="submit">Process Scheduled</button>
+                </form>
+            </div>
+        </div>
+
+        <div class="panel">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Campaign</th>
+                        <th>Template</th>
+                        <th>Status</th>
+                        <th>Recipients</th>
+                        <th>Scheduled</th>
+                        <th>Sent</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for campaign in campaigns %}
+                    <tr>
+                        <td><div class="name">{{ campaign.name }}</div><div class="muted">By {{ campaign.created_by }}</div></td>
+                        <td>{{ campaign.template.name if campaign.template else '-' }}</td>
+                        <td><span class="badge status-{{ campaign.status|lower }}">{{ campaign.status }}</span></td>
+                        <td>{{ campaign.deliveries|length }}</td>
+                        <td>{{ campaign.scheduled_at.strftime('%Y-%m-%d %H:%M') if campaign.scheduled_at else '-' }}</td>
+                        <td>{{ campaign.sent_at.strftime('%Y-%m-%d %H:%M') if campaign.sent_at else '-' }}</td>
+                        <td><a href="{{ url_for('search_history.email_campaign_detail', campaign_id=campaign.id) }}" class="btn btn-secondary">View</a></td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="7" class="muted">No campaigns yet.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</body>
+</html>

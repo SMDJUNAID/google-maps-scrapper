@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ campaign.name }}</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { background: #f3f6f4; color: #1f2933; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; min-height: 100vh; padding: 20px; }
+        .container { margin: 0 auto; max-width: 1400px; }
+        .header, .panel, .email-card { background: white; border: 1px solid #d9e2dc; border-radius: 8px; box-shadow: 0 8px 22px rgba(31, 41, 51, 0.06); }
+        .header { align-items: flex-start; display: flex; gap: 20px; justify-content: space-between; margin-bottom: 24px; padding: 28px; }
+        .header p, .muted { color: #64746a; }
+        .actions { display: flex; flex-wrap: wrap; gap: 10px; }
+        .btn { border: 0; border-radius: 6px; cursor: pointer; display: inline-block; font-size: 14px; font-weight: 700; padding: 10px 16px; text-decoration: none; }
+        .btn-primary { background: #0f766e; color: white; }
+        .btn-secondary { background: #f7faf8; border: 1px solid #d9e2dc; color: #64746a; }
+        .grid { display: grid; gap: 24px; grid-template-columns: minmax(0, 1fr) minmax(340px, 0.75fr); }
+        .panel { margin-bottom: 24px; overflow: hidden; padding: 20px; }
+        table { border-collapse: collapse; width: 100%; }
+        th, td { border-bottom: 1px solid #e6eee9; padding: 12px; text-align: left; vertical-align: top; }
+        th { background: #f7faf8; color: #1f2933; font-size: 14px; }
+        td { color: #64746a; font-size: 14px; }
+        .badge { border-radius: 999px; display: inline-block; font-size: 12px; font-weight: 800; padding: 5px 10px; }
+        .status-sent, .status-replied { background: #d4edda; color: #155724; }
+        .status-scheduled, .status-pending { background: #fff3cd; color: #856404; }
+        .status-skipped, .status-cancelled { background: #f8d7da; color: #721c24; }
+        .email-card { margin-top: 14px; padding: 16px; }
+        .email-body { border-top: 1px solid #e6eee9; margin-top: 10px; padding-top: 10px; }
+        @media (max-width: 980px) { .header, .grid { display: block; } .panel { overflow-x: auto; } }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div>
+                <h1>{{ campaign.name }}</h1>
+                <p>{{ campaign.template.name if campaign.template else '-' }} · {{ campaign.status }}</p>
+            </div>
+            <div class="actions">
+                <a href="{{ url_for('search_history.email_campaigns') }}" class="btn btn-secondary">Campaigns</a>
+                <a href="{{ url_for('search_history.follow_ups', status='Pending') }}" class="btn btn-secondary">Follow-ups</a>
+            </div>
+        </div>
+
+        <div class="grid">
+            <main>
+                <section class="panel">
+                    <h2>Delivery History</h2>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Company</th>
+                                <th>Email</th>
+                                <th>Type</th>
+                                <th>Status</th>
+                                <th>Sent/Scheduled</th>
+                                <th>Reply</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for delivery in deliveries %}
+                            <tr>
+                                <td>
+                                    {% if delivery.company %}
+                                    <a href="{{ url_for('search_history.company_detail', company_id=delivery.company_id) }}">{{ delivery.company.name }}</a>
+                                    {% else %}
+                                    Company #{{ delivery.company_id }}
+                                    {% endif %}
+                                </td>
+                                <td>{{ delivery.email or '-' }}</td>
+                                <td>{{ delivery.delivery_type.replace('_', ' ') }}</td>
+                                <td><span class="badge status-{{ delivery.status|lower }}">{{ delivery.status }}</span>{% if delivery.error %}<div class="muted">{{ delivery.error }}</div>{% endif %}</td>
+                                <td>{{ delivery.sent_at.strftime('%Y-%m-%d %H:%M') if delivery.sent_at else delivery.scheduled_at.strftime('%Y-%m-%d %H:%M') if delivery.scheduled_at else '-' }}</td>
+                                <td>
+                                    {% if delivery.replied_at %}
+                                    {{ delivery.replied_at.strftime('%Y-%m-%d %H:%M') }}
+                                    {% elif delivery.status in ['Sent', 'Replied'] %}
+                                    <form method="POST" action="{{ url_for('search_history.mark_email_replied', delivery_id=delivery.id) }}">
+                                        <button type="submit" class="btn btn-secondary">Mark Replied</button>
+                                    </form>
+                                    {% else %}
+                                    -
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% else %}
+                            <tr><td colspan="6" class="muted">No delivery history yet.</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </section>
+
+                <section class="panel">
+                    <h2>Rendered Emails</h2>
+                    {% for delivery in deliveries %}
+                    <div class="email-card">
+                        <div><strong>{{ delivery.rendered_subject or '-' }}</strong></div>
+                        <div class="muted">{{ delivery.company.name if delivery.company else 'Company #' ~ delivery.company_id }} · {{ delivery.email or '-' }}</div>
+                        <div class="email-body">{{ delivery.rendered_body_html|safe if delivery.rendered_body_html else '-' }}</div>
+                    </div>
+                    {% else %}
+                    <p class="muted">No rendered emails stored.</p>
+                    {% endfor %}
+                </section>
+            </main>
+
+            <aside>
+                <section class="panel">
+                    <h2>Follow-up Automation</h2>
+                    <p class="muted">Day 3, Day 7, and Day 14 follow-ups stop when the lead replies or is marked Won/Lost.</p>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Company</th>
+                                <th>Day</th>
+                                <th>Status</th>
+                                <th>Scheduled</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for follow_up in follow_ups %}
+                            <tr>
+                                <td>{{ follow_up.company.name if follow_up.company else follow_up.company_id }}{% if follow_up.skip_reason %}<div class="muted">{{ follow_up.skip_reason }}</div>{% endif %}</td>
+                                <td>{{ follow_up.day_number }}</td>
+                                <td><span class="badge status-{{ follow_up.status|lower }}">{{ follow_up.status }}</span></td>
+                                <td>{{ follow_up.scheduled_at.strftime('%Y-%m-%d %H:%M') }}</td>
+                            </tr>
+                            {% else %}
+                            <tr><td colspan="4" class="muted">No follow-ups scheduled.</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                    <form method="POST" action="{{ url_for('search_history.process_due_follow_ups') }}" style="margin-top: 14px;">
+                        <button class="btn btn-primary" type="submit">Process Due Follow-ups</button>
+                    </form>
+                </section>
+            </aside>
+        </div>
+    </div>
+</body>
+</html>
