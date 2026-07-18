@@ -28,6 +28,8 @@
     </style>
 </head>
 <body>
+    {% set nav_active = 'followups' %}
+    {% include 'search_history/_nav.html' %}
     <div class="container">
         <div class="header">
             <div>
@@ -35,7 +37,6 @@
                 <p>Day 3, Day 7, and Day 14 automation queue.</p>
             </div>
             <div class="actions">
-                <a href="{{ url_for('search_history.email_campaigns') }}" class="btn btn-secondary">Campaigns</a>
                 <a href="{{ url_for('search_history.follow_ups') }}" class="btn btn-secondary">All</a>
                 <a href="{{ url_for('search_history.follow_ups', status='Pending') }}" class="btn btn-secondary">Pending</a>
                 <form method="POST" action="{{ url_for('search_history.process_due_follow_ups') }}">

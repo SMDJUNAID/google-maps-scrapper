@@ -29,6 +29,8 @@
     </style>
 </head>
 <body>
+    {% set nav_active = 'campaigns' %}
+    {% include 'search_history/_nav.html' %}
     <div class="container">
         <div class="header">
             <div>
@@ -37,8 +39,6 @@
             </div>
             <div class="actions">
                 <a href="{{ url_for('search_history.new_email_campaign') }}" class="btn btn-primary">New Campaign</a>
-                <a href="{{ url_for('search_history.email_templates') }}" class="btn btn-secondary">Templates</a>
-                <a href="{{ url_for('search_history.follow_ups') }}" class="btn btn-secondary">Follow-ups</a>
                 <form method="POST" action="{{ url_for('search_history.process_scheduled_campaigns') }}">
                     <button class="btn btn-secondary" type="submit">Process Scheduled</button>
                 </form>

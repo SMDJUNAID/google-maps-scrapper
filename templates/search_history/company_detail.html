@@ -220,6 +220,8 @@
     </style>
 </head>
 <body>
+    {% set nav_active = 'companies' %}
+    {% include 'search_history/_nav.html' %}
     <header class="page-header py-4 mb-4">
         <div class="container">
             <div class="d-flex flex-column flex-md-row justify-content-between gap-3">
@@ -229,12 +231,6 @@
                         <div class="text-muted">{{ company.category or 'No category stored' }}</div>
                         <span class="badge text-bg-{{ company.lead_status_badge_class }}">{{ company.lead_status }}</span>
                     </div>
-                </div>
-                <div class="d-flex align-items-start gap-2">
-                    <a href="{{ url_for('search_history.dashboard') }}" class="btn btn-outline-secondary">Dashboard</a>
-                    <a href="{{ url_for('search_history.email_campaigns') }}" class="btn btn-outline-secondary">Campaigns</a>
-                    <a href="{{ url_for('search_history.companies') }}" class="btn btn-outline-secondary">Companies</a>
-                    <a href="{{ url_for('search_history.index') }}" class="btn btn-outline-secondary">Search History</a>
                 </div>
             </div>
         </div>

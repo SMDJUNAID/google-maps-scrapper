@@ -27,6 +27,8 @@
     </style>
 </head>
 <body>
+    {% set nav_active = 'templates' %}
+    {% include 'search_history/_nav.html' %}
     <div class="container">
         <div class="header">
             <div>
@@ -40,8 +42,6 @@
             </div>
             <div class="actions">
                 <a href="{{ url_for('search_history.new_email_template') }}" class="btn btn-primary">New Template</a>
-                <a href="{{ url_for('search_history.email_campaigns') }}" class="btn btn-secondary">Campaigns</a>
-                <a href="{{ url_for('search_history.dashboard') }}" class="btn btn-secondary">Dashboard</a>
             </div>
         </div>
 

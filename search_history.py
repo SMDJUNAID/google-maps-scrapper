@@ -1233,18 +1233,79 @@ def email_campaigns():
 @search_history_bp.route('/email-campaigns/new', methods=['GET', 'POST'])
 def new_email_campaign():
     templates = EmailTemplate.query.order_by(EmailTemplate.name.asc()).all()
+    previews = []
+    selected_company_ids = [int(value) for value in request.form.getlist('company_ids') if value.isdigit()]
+    selected_template_id = request.form.get('template_id', type=int)
+    lead_status_filter = request.form.get('lead_status', '')
+    country_filter = request.form.get('country', '')
+    tag_filter = request.form.get('tag_id', type=int)
+    website_filter = request.form.get('has_website', '')
+    email_filter = request.form.get('has_email', '')
+    campaign_name = request.form.get('name', '').strip()
+    scheduled_at_value = request.form.get('scheduled_at', '')
+
+    companies_query = Company.query.options(joinedload(Company.contacts), joinedload(Company.tags))
+    if lead_status_filter in LEAD_STATUSES:
+        companies_query = companies_query.filter(Company.lead_status == lead_status_filter)
+    else:
+        lead_status_filter = ''
+    if country_filter:
+        companies_query = companies_query.filter(Company.country == country_filter)
+    if tag_filter:
+        companies_query = companies_query.filter(Company.tags.any(Tag.id == tag_filter))
+    if website_filter == 'yes':
+        companies_query = companies_query.filter(and_(Company.website.isnot(None), Company.website != ''))
+    elif website_filter == 'no':
+        companies_query = companies_query.filter(or_(Company.website.is_(None), Company.website == ''))
+    else:
+        website_filter = ''
+    if email_filter == 'yes':
+        companies_query = companies_query.filter(Company.contacts.any(and_(Contact.email.isnot(None), Contact.email != '')))
+    elif email_filter == 'no':
+        companies_query = companies_query.filter(~Company.contacts.any(and_(Contact.email.isnot(None), Contact.email != '')))
+    else:
+        email_filter = ''
+
     companies = (
-        Company.query.options(joinedload(Company.contacts), joinedload(Company.tags))
+        companies_query
         .order_by(Company.updated_at.desc(), Company.name.asc())
         .limit(250)
         .all()
     )
-    previews = []
-    selected_company_ids = [int(value) for value in request.form.getlist('company_ids') if value.isdigit()]
-    selected_template_id = request.form.get('template_id', type=int)
+    for company in companies:
+        company.campaign_email = _first_company_email(company)
+    countries = [
+        country
+        for country, in db.session.query(Company.country)
+        .filter(Company.country.isnot(None), Company.country != '')
+        .distinct()
+        .order_by(Company.country.asc())
+        .all()
+    ]
+    tags = Tag.query.order_by(Tag.name.asc()).all()
 
     if request.method == 'POST':
         action = request.form.get('action', 'preview')
+        if action == 'filter':
+            return render_template(
+                'search_history/email_campaign_form.html',
+                templates=templates,
+                companies=companies,
+                countries=countries,
+                tags=tags,
+                lead_statuses=LEAD_STATUSES,
+                lead_status_filter=lead_status_filter,
+                country_filter=country_filter,
+                tag_filter=tag_filter,
+                website_filter=website_filter,
+                email_filter=email_filter,
+                selected_company_ids=selected_company_ids,
+                selected_template_id=selected_template_id,
+                previews=previews,
+                campaign_name=campaign_name,
+                scheduled_at=scheduled_at_value,
+            )
+
         template = db.session.get(EmailTemplate, selected_template_id) if selected_template_id else None
         selected_companies = _campaign_company_query(selected_company_ids) if selected_company_ids else []
         if not template:
@@ -1268,15 +1329,23 @@ def new_email_campaign():
                 'search_history/email_campaign_form.html',
                 templates=templates,
                 companies=companies,
+                countries=countries,
+                tags=tags,
+                lead_statuses=LEAD_STATUSES,
+                lead_status_filter=lead_status_filter,
+                country_filter=country_filter,
+                tag_filter=tag_filter,
+                website_filter=website_filter,
+                email_filter=email_filter,
                 selected_company_ids=selected_company_ids,
                 selected_template_id=selected_template_id,
                 previews=previews,
-                campaign_name=request.form.get('name', '').strip(),
-                scheduled_at=request.form.get('scheduled_at', ''),
+                campaign_name=campaign_name,
+                scheduled_at=scheduled_at_value,
             )
 
-        name = request.form.get('name', '').strip() or f'Campaign {datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M")}'
-        scheduled_at = _parse_datetime_local(request.form.get('scheduled_at'))
+        name = campaign_name or f'Campaign {datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M")}'
+        scheduled_at = _parse_datetime_local(scheduled_at_value)
         now = datetime.now(timezone.utc)
         is_scheduled = action == 'schedule'
         if is_scheduled and not scheduled_at:
@@ -1316,6 +1385,14 @@ def new_email_campaign():
         'search_history/email_campaign_form.html',
         templates=templates,
         companies=companies,
+        countries=countries,
+        tags=tags,
+        lead_statuses=LEAD_STATUSES,
+        lead_status_filter=lead_status_filter,
+        country_filter=country_filter,
+        tag_filter=tag_filter,
+        website_filter=website_filter,
+        email_filter=email_filter,
         selected_company_ids=selected_company_ids,
         selected_template_id=selected_template_id,
         previews=previews,

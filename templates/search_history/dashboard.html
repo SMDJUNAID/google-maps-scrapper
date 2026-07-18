@@ -70,18 +70,13 @@
     </style>
 </head>
 <body>
+    {% set nav_active = 'dashboard' %}
+    {% include 'search_history/_nav.html' %}
     <div class="container">
         <div class="header">
             <div>
                 <h1>Dashboard</h1>
                 <p>Lead, search, and growth metrics</p>
-            </div>
-            <div class="actions">
-                <a href="{{ url_for('search_history.companies') }}" class="btn btn-primary">Companies</a>
-                <a href="{{ url_for('search_history.email_campaigns') }}" class="btn btn-secondary">Campaigns</a>
-                <a href="{{ url_for('search_history.email_templates') }}" class="btn btn-secondary">Templates</a>
-                <a href="{{ url_for('search_history.index') }}" class="btn btn-secondary">Search History</a>
-                <a href="/" class="btn btn-secondary">New Search</a>
             </div>
         </div>
 

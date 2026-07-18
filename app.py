@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any
 
-from flask import Flask, jsonify, render_template, request, send_file
+from flask import Flask, jsonify, redirect, render_template, request, send_file, url_for
 from flask_migrate import Migrate
 
 from config import get_config
@@ -585,6 +585,11 @@ def _run_scrape(
 
 @app.route("/")
 def index():
+    return redirect(url_for("search_history.dashboard"))
+
+
+@app.route("/new-search")
+def new_search():
     return render_template("index.html", default_search_strings=DEFAULT_SEARCH_STRINGS)
 
 

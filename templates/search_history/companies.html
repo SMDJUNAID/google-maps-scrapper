@@ -261,16 +261,13 @@
     </style>
 </head>
 <body>
+    {% set nav_active = 'companies' %}
+    {% include 'search_history/_nav.html' %}
     <div class="container">
         <div class="header">
             <div>
                 <h1>{{ lead_status_filter or 'All Companies' }}</h1>
                 <p>{{ pagination.total }} compan{{ 'y' if pagination.total == 1 else 'ies' }} found</p>
-            </div>
-            <div class="actions">
-                <a href="{{ url_for('search_history.dashboard') }}" class="btn btn-secondary">Dashboard</a>
-                <a href="{{ url_for('search_history.index') }}" class="btn btn-secondary">Search History</a>
-                <a href="{{ url_for('search_history.companies') }}" class="btn btn-primary">All Companies</a>
             </div>
         </div>
 
