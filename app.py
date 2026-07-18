@@ -9,13 +9,13 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any
 
-from flask import Flask, jsonify, render_template, request, send_file
+from flask import Flask, jsonify, redirect, render_template, request, send_file, url_for
 from flask_migrate import Migrate
 
 from config import get_config
 from extensions import db
 from models import Company, Contact, SearchJob, SearchResult
-from search_history import search_history_bp
+from search_history import _record_activity, search_history_bp
 from scraper.contact_finder import enrich_results_combined
 from scraper.email_finder import enrich_results_with_emails
 from scraper.export import to_excel_bytes_from_dicts, to_json_bytes_from_dicts
@@ -192,6 +192,9 @@ def _build_summary_message(results: list[dict[str, Any]]) -> str:
 
 
 def _update_job(job_id: str, **kwargs: Any) -> None:
+    if kwargs.get("status") in {"completed", "failed"} and not kwargs.get("completed_at"):
+        kwargs["completed_at"] = datetime.now(timezone.utc)
+
     with jobs_lock:
         job = jobs.get(job_id)
         if job:
@@ -388,6 +391,7 @@ def _clean_optional_text(value: Any) -> str | None:
 def _save_results_to_database(job_id: str, results: list[dict[str, Any]]) -> None:
     """Save scrape results to database using new models with duplicate detection."""
     with app.app_context():
+        db_job = db.session.get(SearchJob, job_id)
         # Clear existing results for this job
         SearchResult.query.filter_by(search_job_id=job_id).delete()
         
@@ -396,6 +400,8 @@ def _save_results_to_database(job_id: str, results: list[dict[str, Any]]) -> Non
             # Find or create company using place_url and website for duplicate detection
             place_url = _clean_optional_text(result.get("place_url"))
             website = _clean_optional_text(result.get("website"))
+            state = _clean_optional_text(result.get("state") or (db_job.state if db_job else None))
+            city = _clean_optional_text(result.get("city") or (db_job.city if db_job else None))
             
             company = None
             if place_url:
@@ -417,19 +423,55 @@ def _save_results_to_database(job_id: str, results: list[dict[str, Any]]) -> Non
                 )
                 db.session.add(company)
                 db.session.flush()  # Get the company ID
+                company.state = state
+                company.city = city
+                _record_activity(
+                    company.id,
+                    "company_created",
+                    f"Company created from search job {job_id}.",
+                    user="System",
+                    metadata={"search_job_id": job_id},
+                )
             else:
                 # Update existing company with fresh data
+                before = {
+                    "name": company.name,
+                    "address": company.address,
+                    "category": company.category,
+                    "rating": company.rating,
+                    "reviews_count": company.reviews_count,
+                    "country": company.country,
+                    "state": company.state,
+                    "city": company.city,
+                    "industry": company.industry,
+                    "website": company.website,
+                    "place_url": company.place_url,
+                }
                 company.name = result.get("name", company.name)
                 company.address = result.get("address", company.address)
                 company.category = result.get("category", company.category)
                 company.rating = result.get("rating", company.rating)
                 company.reviews_count = result.get("reviews_count", company.reviews_count)
                 company.country = result.get("country", company.country)
+                company.state = state or company.state
+                company.city = city or company.city
                 company.industry = result.get("industry", company.industry)
                 if website and not company.website:
                     company.website = website
                 if place_url and not company.place_url:
                     company.place_url = place_url
+                changed_fields = [
+                    field for field, old_value in before.items()
+                    if getattr(company, field) != old_value
+                ]
+                if changed_fields:
+                    _record_activity(
+                        company.id,
+                        "company_updated",
+                        f"Company updated from search job {job_id}.",
+                        user="System",
+                        metadata={"search_job_id": job_id, "fields": changed_fields},
+                    )
             
             # Keep one current general contact per company. Re-scrapes update
             # the latest contact row instead of adding another card every time.
@@ -543,6 +585,11 @@ def _run_scrape(
 
 @app.route("/")
 def index():
+    return redirect(url_for("search_history.dashboard"))
+
+
+@app.route("/new-search")
+def new_search():
     return render_template("index.html", default_search_strings=DEFAULT_SEARCH_STRINGS)
 
 

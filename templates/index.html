@@ -27,15 +27,16 @@
 	      background:
 	        linear-gradient(180deg, rgba(15, 118, 110, 0.08), rgba(217, 119, 6, 0.04) 42%, transparent 72%),
 	        var(--bg);
-	      color: var(--text);
+      color: var(--text);
       line-height: 1.5;
       min-height: 100vh;
+      padding: 20px;
     }
 
     .container {
       max-width: 1400px;
       margin: 0 auto;
-      padding: 2rem 1.5rem 4rem;
+      padding: 2rem 0 4rem;
     }
 
 	    header {
@@ -59,20 +60,6 @@
     header p {
       color: var(--muted);
       font-size: 0.95rem;
-    }
-
-	    .history-btn {
-	      padding: 0.5rem 1rem;
-	      background: var(--accent);
-      color: white;
-      text-decoration: none;
-      border-radius: var(--radius);
-      font-weight: 500;
-      transition: background 0.3s;
-    }
-
-    .history-btn:hover {
-      background: var(--accent-hover);
     }
 
 	    .card {
@@ -402,13 +389,14 @@
   </style>
 </head>
 <body>
+  {% set nav_active = 'new_search' %}
+  {% include 'search_history/_nav.html' %}
   <div class="container">
     <header>
       <div>
         <h1>Google Maps Business Scraper</h1>
         <p>Search wholesalers, distributors, importers, and suppliers by country on Google Maps.</p>
       </div>
-      <a href="{{ url_for('search_history.index') }}" class="history-btn">Search History</a>
     </header>
 
     <div id="errorBox" class="error-box"></div>

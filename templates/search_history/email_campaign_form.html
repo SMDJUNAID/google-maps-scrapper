@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>New Email Campaign</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            background: #f3f6f4;
+            color: #1f2933;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .container { margin: 0 auto; max-width: 1440px; }
+        .header, .panel, .summary-card, .preview-card {
+            background: #ffffff;
+            border: 1px solid #d9e2dc;
+            border-radius: 8px;
+            box-shadow: 0 8px 22px rgba(31, 41, 51, 0.06);
+        }
+        .header {
+            align-items: flex-start;
+            display: flex;
+            gap: 20px;
+            justify-content: space-between;
+            margin-bottom: 18px;
+            padding: 24px;
+        }
+        .header p, label, .muted, .helper { color: #64746a; }
+        .btn {
+            border: 0;
+            border-radius: 6px;
+            cursor: pointer;
+            display: inline-block;
+            font-size: 14px;
+            font-weight: 700;
+            padding: 10px 16px;
+            text-decoration: none;
+        }
+        .btn-primary { background: #0f766e; color: #ffffff; }
+        .btn-secondary { background: #f7faf8; border: 1px solid #d9e2dc; color: #64746a; }
+        .btn-warning { background: #d97706; color: #ffffff; }
+        .campaign-form { display: grid; gap: 18px; }
+        .panel { padding: 18px; }
+        .panel-title {
+            align-items: center;
+            border-bottom: 1px solid #e6eee9;
+            display: flex;
+            gap: 12px;
+            justify-content: space-between;
+            margin: -2px 0 16px;
+            padding-bottom: 12px;
+        }
+        .panel-title h2 { font-size: 18px; }
+        .step {
+            background: #e7f4ef;
+            border-radius: 999px;
+            color: #0f766e;
+            display: inline-flex;
+            font-size: 12px;
+            font-weight: 800;
+            height: 26px;
+            justify-content: center;
+            line-height: 26px;
+            width: 26px;
+        }
+        .setup-grid {
+            display: grid;
+            gap: 14px;
+            grid-template-columns: minmax(220px, 1.2fr) minmax(220px, 1fr) minmax(190px, 0.8fr);
+        }
+        label { display: block; font-size: 13px; font-weight: 800; margin-bottom: 6px; }
+        input, select {
+            background: #f7faf8;
+            border: 1px solid #d9e2dc;
+            border-radius: 6px;
+            color: #1f2933;
+            font-size: 14px;
+            min-height: 42px;
+            padding: 10px 11px;
+            width: 100%;
+        }
+        input[type="checkbox"] { min-height: 0; width: auto; }
+        .builder-grid {
+            align-items: start;
+            display: grid;
+            gap: 18px;
+            grid-template-columns: minmax(440px, 0.95fr) minmax(420px, 1.05fr);
+        }
+        .filter-grid {
+            display: grid;
+            gap: 10px;
+            grid-template-columns: repeat(5, minmax(130px, 1fr));
+        }
+        .filter-actions {
+            align-items: center;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            justify-content: space-between;
+            margin-top: 12px;
+        }
+        .summary-row {
+            display: grid;
+            gap: 10px;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            margin: 14px 0;
+        }
+        .summary-card { padding: 12px; }
+        .summary-card span { color: #64746a; display: block; font-size: 12px; font-weight: 800; }
+        .summary-card strong { display: block; font-size: 24px; line-height: 1.1; margin-top: 4px; }
+        .company-list {
+            border: 1px solid #d9e2dc;
+            border-radius: 8px;
+            max-height: 460px;
+            overflow: auto;
+        }
+        .company-row {
+            align-items: flex-start;
+            border-bottom: 1px solid #e6eee9;
+            cursor: pointer;
+            display: grid;
+            gap: 10px;
+            grid-template-columns: auto 1fr;
+            padding: 12px;
+        }
+        .company-row:last-child { border-bottom: 0; }
+        .company-row:hover { background: #f7faf8; }
+        .company-name { color: #1f2933; display: block; font-weight: 800; margin-bottom: 4px; }
+        .company-meta {
+            color: #64746a;
+            display: flex;
+            flex-wrap: wrap;
+            font-size: 12px;
+            gap: 7px;
+        }
+        .status-pill, .tag-pill, .availability-pill {
+            border-radius: 999px;
+            display: inline-block;
+            font-size: 11px;
+            font-weight: 800;
+            padding: 3px 7px;
+        }
+        .status-pill { background: #e7f4ef; color: #0f766e; }
+        .availability-pill { background: #eef2f7; color: #475569; }
+        .availability-pill.good { background: #d4edda; color: #155724; }
+        .availability-pill.warn { background: #fff3cd; color: #856404; }
+        .tag-pill { color: #ffffff; margin-top: 6px; }
+        .preview-panel { position: sticky; top: 16px; }
+        .preview-list {
+            display: grid;
+            gap: 14px;
+            max-height: 680px;
+            overflow: auto;
+            padding-right: 4px;
+        }
+        .preview-card { padding: 18px; }
+        .preview-head {
+            align-items: flex-start;
+            display: flex;
+            gap: 12px;
+            justify-content: space-between;
+            margin-bottom: 12px;
+        }
+        .preview-subject {
+            border-bottom: 1px solid #e6eee9;
+            border-top: 1px solid #e6eee9;
+            margin: 12px 0;
+            padding: 12px 0;
+        }
+        .preview-subject span {
+            color: #64746a;
+            display: block;
+            font-size: 12px;
+            font-weight: 800;
+            margin-bottom: 4px;
+        }
+        .preview-body {
+            background: #fbfcfb;
+            border: 1px solid #e6eee9;
+            border-radius: 8px;
+            line-height: 1.5;
+            padding: 14px;
+        }
+        .empty-state {
+            background: #f7faf8;
+            border: 1px dashed #cbded4;
+            border-radius: 8px;
+            color: #64746a;
+            padding: 28px;
+            text-align: center;
+        }
+        .send-actions {
+            border-top: 1px solid #e6eee9;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            justify-content: flex-end;
+            margin-top: 16px;
+            padding-top: 16px;
+        }
+        @media (max-width: 1120px) {
+            .builder-grid, .setup-grid { grid-template-columns: 1fr; }
+            .preview-panel { position: static; }
+        }
+        @media (max-width: 760px) {
+            .header, .filter-grid, .summary-row { display: block; }
+            .filter-grid > div + div, .summary-card + .summary-card { margin-top: 10px; }
+            .header .btn { margin-top: 14px; }
+        }
+    </style>
+</head>
+<body>
+    {% set nav_active = 'campaigns' %}
+    {% include 'search_history/_nav.html' %}
+    <div class="container">
+        <div class="header">
+            <div>
+                <h1>New Email Campaign</h1>
+                <p>Filter recipients, preview personalized emails, then send now or schedule for later.</p>
+            </div>
+            <a href="{{ url_for('search_history.email_campaigns') }}" class="btn btn-secondary">Campaigns</a>
+        </div>
+
+        <form method="POST" class="campaign-form">
+            <section class="panel">
+                <div class="panel-title">
+                    <h2><span class="step">1</span> Campaign Setup</h2>
+                </div>
+                <div class="setup-grid">
+                    <div>
+                        <label for="name">Campaign Name</label>
+                        <input id="name" name="name" value="{{ campaign_name }}" placeholder="July distributor outreach">
+                    </div>
+                    <div>
+                        <label for="template_id">Template</label>
+                        <select id="template_id" name="template_id" required>
+                            <option value="">Select template</option>
+                            {% for template in templates %}
+                            <option value="{{ template.id }}" {% if selected_template_id == template.id %}selected{% endif %}>{{ template.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div>
+                        <label for="scheduled_at">Schedule For</label>
+                        <input id="scheduled_at" name="scheduled_at" type="datetime-local" value="{{ scheduled_at }}">
+                    </div>
+                </div>
+            </section>
+
+            <div class="builder-grid">
+                <section class="panel">
+                    <div class="panel-title">
+                        <h2><span class="step">2</span> Recipients</h2>
+                    </div>
+                    <div class="filter-grid">
+                        <div>
+                            <label for="lead_status">Lead Status</label>
+                            <select id="lead_status" name="lead_status">
+                                <option value="">All Statuses</option>
+                                {% for lead_status in lead_statuses %}
+                                <option value="{{ lead_status }}" {% if lead_status_filter == lead_status %}selected{% endif %}>{{ lead_status }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div>
+                            <label for="country">Country</label>
+                            <select id="country" name="country">
+                                <option value="">All Countries</option>
+                                {% for country in countries %}
+                                <option value="{{ country }}" {% if country_filter == country %}selected{% endif %}>{{ country }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div>
+                            <label for="tag_id">Tag</label>
+                            <select id="tag_id" name="tag_id">
+                                <option value="">All Tags</option>
+                                {% for tag in tags %}
+                                <option value="{{ tag.id }}" {% if tag_filter == tag.id %}selected{% endif %}>{{ tag.name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div>
+                            <label for="has_website">Website</label>
+                            <select id="has_website" name="has_website">
+                                <option value="">Any</option>
+                                <option value="yes" {% if website_filter == 'yes' %}selected{% endif %}>Has website</option>
+                                <option value="no" {% if website_filter == 'no' %}selected{% endif %}>No website</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label for="has_email">Email</label>
+                            <select id="has_email" name="has_email">
+                                <option value="">Any</option>
+                                <option value="yes" {% if email_filter == 'yes' %}selected{% endif %}>Has email</option>
+                                <option value="no" {% if email_filter == 'no' %}selected{% endif %}>No email</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="filter-actions">
+                        <p class="helper">Filters combine together, so each visible company matches every selected filter.</p>
+                        <button class="btn btn-secondary" name="action" value="filter" type="submit" formnovalidate>Apply Filters</button>
+                    </div>
+
+                    <div class="summary-row">
+                        <div class="summary-card"><span>Visible Companies</span><strong>{{ companies|length }}</strong></div>
+                        <div class="summary-card"><span>Selected</span><strong>{{ selected_company_ids|length }}</strong></div>
+                        <div class="summary-card"><span>Previewed</span><strong>{{ previews|length }}</strong></div>
+                    </div>
+
+                    <div class="company-list">
+                        {% for company in companies %}
+                        {% set has_email = company.campaign_email if company.campaign_email is defined else '' %}
+                        <label class="company-row">
+                            <input type="checkbox" name="company_ids" value="{{ company.id }}" {% if company.id in selected_company_ids %}checked{% endif %}>
+                            <span>
+                                <span class="company-name">{{ company.name }}</span>
+                                <span class="company-meta">
+                                    <span>ID {{ company.id }}</span>
+                                    <span>{{ company.country or 'No country' }}</span>
+                                    <span class="status-pill">{{ company.lead_status }}</span>
+                                    <span class="availability-pill {% if company.website %}good{% else %}warn{% endif %}">{{ 'Website' if company.website else 'No website' }}</span>
+                                    <span class="availability-pill {% if has_email %}good{% else %}warn{% endif %}">{{ 'Email' if has_email else 'No email' }}</span>
+                                </span>
+                                <span>
+                                    {% for tag in company.tags %}
+                                    <span class="tag-pill" style="background: {{ tag.color }};">{{ tag.name }}</span>
+                                    {% endfor %}
+                                </span>
+                            </span>
+                        </label>
+                        {% else %}
+                        <div class="empty-state">No companies match the selected filters.</div>
+                        {% endfor %}
+                    </div>
+                </section>
+
+                <section class="panel preview-panel">
+                    <div class="panel-title">
+                        <h2><span class="step">3</span> Preview & Send</h2>
+                    </div>
+                    <div class="preview-list">
+                        {% for preview in previews %}
+                        <div class="preview-card">
+                            <div class="preview-head">
+                                <div>
+                                    <strong>{{ preview.company.name }}</strong>
+                                    <div class="muted">{{ preview.email or 'No email stored' }}</div>
+                                </div>
+                                <span class="status-pill">{{ preview.company.lead_status }}</span>
+                            </div>
+                            <div class="preview-subject">
+                                <span>Subject</span>
+                                <strong>{{ preview.subject }}</strong>
+                            </div>
+                            <div class="preview-body">{{ preview.body_html|safe }}</div>
+                        </div>
+                        {% else %}
+                        <div class="empty-state">
+                            <strong>Preview appears here</strong>
+                            <p class="helper">Select companies and a template, then click Preview Emails before sending.</p>
+                        </div>
+                        {% endfor %}
+                    </div>
+
+                    <div class="send-actions">
+                        <button class="btn btn-secondary" name="action" value="preview" type="submit">Preview Emails</button>
+                        <button class="btn btn-primary" name="action" value="send" type="submit">Send Immediately</button>
+                        <button class="btn btn-warning" name="action" value="schedule" type="submit">Schedule</button>
+                    </div>
+                </section>
+            </div>
+        </form>
+    </div>
+</body>
+</html>

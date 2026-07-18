@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ 'Edit' if template else 'New' }} Email Template</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { background: #f3f6f4; color: #1f2933; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; min-height: 100vh; padding: 20px; }
+        .container { margin: 0 auto; max-width: 1200px; }
+        .header, .panel, .preview { background: white; border: 1px solid #d9e2dc; border-radius: 8px; box-shadow: 0 8px 22px rgba(31, 41, 51, 0.06); }
+        .header { align-items: flex-start; display: flex; gap: 20px; justify-content: space-between; margin-bottom: 24px; padding: 28px; }
+        .header p, label, .muted { color: #64746a; }
+        .layout { display: grid; gap: 24px; grid-template-columns: minmax(0, 1fr) minmax(320px, 0.8fr); }
+        .panel, .preview { padding: 20px; }
+        .form-grid { display: grid; gap: 14px; }
+        label { display: block; font-size: 14px; font-weight: 700; margin-bottom: 6px; }
+        input, .editor { background: #f7faf8; border: 1px solid #d9e2dc; border-radius: 6px; color: #1f2933; font-size: 15px; padding: 11px; width: 100%; }
+        .editor { min-height: 260px; overflow: auto; }
+        .toolbar { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
+        .btn { border: 0; border-radius: 6px; cursor: pointer; display: inline-block; font-size: 14px; font-weight: 700; padding: 10px 16px; text-decoration: none; }
+        .btn-primary { background: #0f766e; color: white; }
+        .btn-secondary { background: #f7faf8; border: 1px solid #d9e2dc; color: #64746a; }
+        .chip { background: #e7f4ef; border-radius: 999px; color: #0f766e; display: inline-block; font-size: 12px; font-weight: 700; margin: 3px 4px 0 0; padding: 5px 9px; }
+        .preview-body { border-top: 1px solid #e6eee9; margin-top: 14px; padding-top: 14px; }
+        @media (max-width: 900px) { .layout, .header { display: block; } .preview { margin-top: 24px; } }
+    </style>
+</head>
+<body>
+    {% set nav_active = 'templates' %}
+    {% include 'search_history/_nav.html' %}
+    <div class="container">
+        <div class="header">
+            <div>
+                <h1>{{ 'Edit' if template else 'New' }} Email Template</h1>
+                <p>Variables are replaced when previewing and sending campaign emails.</p>
+            </div>
+            <a href="{{ url_for('search_history.email_templates') }}" class="btn btn-secondary">Templates</a>
+        </div>
+
+        <div class="layout">
+            <form method="POST" class="panel form-grid" onsubmit="syncBody()">
+                <input type="hidden" name="body_html" id="body_html">
+                <div>
+                    <label for="name">Name</label>
+                    <input id="name" name="name" value="{{ template.name if template else '' }}" required>
+                </div>
+                <div>
+                    <label for="subject">Subject</label>
+                    <input id="subject" name="subject" value="{{ template.subject if template else 'Hello {{company_name}}' }}" required oninput="updatePreview()">
+                </div>
+                <div>
+                    <label>Variables</label>
+                    {% for variable in variables %}
+                    <button type="button" class="chip" onclick="insertVariable('{{ variable }}')">{{ '{{' ~ variable ~ '}}' }}</button>
+                    {% endfor %}
+                </div>
+                <div>
+                    <label>Body</label>
+                    <div class="toolbar">
+                        <button type="button" class="btn btn-secondary" onclick="format('bold')">Bold</button>
+                        <button type="button" class="btn btn-secondary" onclick="format('italic')">Italic</button>
+                        <button type="button" class="btn btn-secondary" onclick="format('insertUnorderedList')">List</button>
+                        <button type="button" class="btn btn-secondary" onclick="addLink()">Link</button>
+                    </div>
+                    <div id="editor" class="editor" contenteditable="true" oninput="updatePreview()">{{ template.body_html|safe if template else '<p>Hi {{company_name}},</p><p>I wanted to connect about opportunities in {{country}}.</p><p>Best regards,</p>'|safe }}</div>
+                </div>
+                <div>
+                    <button type="submit" class="btn btn-primary">Save Template</button>
+                    <a href="{{ url_for('search_history.email_templates') }}" class="btn btn-secondary">Cancel</a>
+                </div>
+            </form>
+
+            <section class="preview">
+                <h2>Preview</h2>
+                <p class="muted">Using sample company data before saving.</p>
+                <div class="preview-body">
+                    <strong id="preview_subject"></strong>
+                    <div id="preview_body" class="preview-body"></div>
+                </div>
+            </section>
+        </div>
+    </div>
+    <script>
+        const sample = {{ sample_company|tojson }};
+        function renderVariables(text) {
+            const openToken = '{' + '{';
+            const closeToken = '}' + '}';
+            return Object.keys(sample).reduce((value, key) => {
+                return value.replaceAll(openToken + key + closeToken, sample[key]).replaceAll(openToken + ' ' + key + ' ' + closeToken, sample[key]);
+            }, text || '');
+        }
+        function updatePreview() {
+            document.getElementById('preview_subject').textContent = renderVariables(document.getElementById('subject').value);
+            document.getElementById('preview_body').innerHTML = renderVariables(document.getElementById('editor').innerHTML);
+        }
+        function syncBody() {
+            document.getElementById('body_html').value = document.getElementById('editor').innerHTML;
+        }
+        function format(command) {
+            document.execCommand(command, false, null);
+            updatePreview();
+        }
+        function addLink() {
+            const url = window.prompt('URL');
+            if (url) document.execCommand('createLink', false, url);
+            updatePreview();
+        }
+        function insertVariable(variable) {
+            document.execCommand('insertText', false, '{' + '{' + variable + '}' + '}');
+            updatePreview();
+        }
+        updatePreview();
+    </script>
+</body>
+</html>

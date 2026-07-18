@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Email Templates</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { background: #f3f6f4; color: #1f2933; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; min-height: 100vh; padding: 20px; }
+        .container { margin: 0 auto; max-width: 1200px; }
+        .header, .panel { background: white; border: 1px solid #d9e2dc; border-radius: 8px; box-shadow: 0 8px 22px rgba(31, 41, 51, 0.06); }
+        .header { align-items: flex-start; display: flex; gap: 20px; justify-content: space-between; margin-bottom: 24px; padding: 28px; }
+        .header p, .muted { color: #64746a; }
+        .actions { display: flex; flex-wrap: wrap; gap: 10px; }
+        .btn { border: 0; border-radius: 6px; cursor: pointer; display: inline-block; font-size: 14px; font-weight: 700; padding: 10px 16px; text-decoration: none; }
+        .btn-primary { background: #0f766e; color: white; }
+        .btn-secondary { background: #f7faf8; border: 1px solid #d9e2dc; color: #64746a; }
+        .btn-danger { background: #dc3545; color: white; }
+        .panel { overflow: hidden; }
+        table { border-collapse: collapse; width: 100%; }
+        th, td { border-bottom: 1px solid #e6eee9; padding: 14px; text-align: left; vertical-align: top; }
+        th { background: #f7faf8; color: #1f2933; font-size: 14px; }
+        td { color: #64746a; font-size: 14px; }
+        .template-name { color: #1f2933; font-weight: 800; }
+        .chip { background: #e7f4ef; border-radius: 999px; color: #0f766e; display: inline-block; font-size: 12px; font-weight: 700; margin: 3px 4px 0 0; padding: 5px 9px; }
+        @media (max-width: 800px) { .header { display: block; } .actions { margin-top: 16px; } .panel { overflow-x: auto; } table { min-width: 760px; } }
+    </style>
+</head>
+<body>
+    {% set nav_active = 'templates' %}
+    {% include 'search_history/_nav.html' %}
+    <div class="container">
+        <div class="header">
+            <div>
+                <h1>Email Templates</h1>
+                <p>Create reusable rich-text emails with company variables.</p>
+                <div>
+                    {% for variable in variables %}
+                    <span class="chip">{{ '{{' ~ variable ~ '}}' }}</span>
+                    {% endfor %}
+                </div>
+            </div>
+            <div class="actions">
+                <a href="{{ url_for('search_history.new_email_template') }}" class="btn btn-primary">New Template</a>
+            </div>
+        </div>
+
+        <div class="panel">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Subject</th>
+                        <th>Updated</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for template in templates %}
+                    <tr>
+                        <td><div class="template-name">{{ template.name }}</div><div class="muted">Created by {{ template.created_by }}</div></td>
+                        <td>{{ template.subject }}</td>
+                        <td>{{ template.updated_at[:19] if template.updated_at else template.created_at[:19] if template.created_at else '-' }}</td>
+                        <td>
+                            <div class="actions">
+                                <a href="{{ url_for('search_history.edit_email_template', template_id=template.id) }}" class="btn btn-secondary">Edit</a>
+                                <form method="POST" action="{{ url_for('search_history.delete_email_template', template_id=template.id) }}">
+                                    <button type="submit" class="btn btn-danger">Delete</button>
+                                </form>
+                            </div>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="4" class="muted">No email templates yet.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</body>
+</html>

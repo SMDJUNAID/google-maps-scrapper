@@ -114,6 +114,62 @@
             word-break: break-word;
         }
 
+        .module-grid {
+            display: grid;
+            gap: 1rem;
+        }
+
+        .note-item,
+        .task-item,
+        .timeline-item,
+        .tag-item {
+            background: #f7faf8;
+            border: 1px solid #d9e2dc;
+            border-radius: 0.5rem;
+            padding: 1rem;
+        }
+
+        .timeline {
+            border-left: 3px solid #cbded4;
+            display: grid;
+            gap: 1rem;
+            margin-left: 0.5rem;
+            padding-left: 1rem;
+        }
+
+        .timeline-item {
+            position: relative;
+        }
+
+        .timeline-item::before {
+            background: #0f766e;
+            border: 3px solid #ffffff;
+            border-radius: 50%;
+            content: "";
+            height: 14px;
+            left: -1.55rem;
+            position: absolute;
+            top: 1.15rem;
+            width: 14px;
+        }
+
+        .tag-pill {
+            align-items: center;
+            border-radius: 999px;
+            color: #ffffff;
+            display: inline-flex;
+            font-size: 0.84rem;
+            font-weight: 700;
+            gap: 0.35rem;
+            padding: 0.35rem 0.65rem;
+            text-decoration: none;
+        }
+
+        .task-overdue {
+            border-color: #dc3545;
+            box-shadow: inset 4px 0 0 #dc3545;
+        }
+
 	        .btn-primary {
 	            background-color: #0f766e;
 	            border-color: #0f766e;
@@ -164,6 +220,8 @@
     </style>
 </head>
 <body>
+    {% set nav_active = 'companies' %}
+    {% include 'search_history/_nav.html' %}
     <header class="page-header py-4 mb-4">
         <div class="container">
             <div class="d-flex flex-column flex-md-row justify-content-between gap-3">
@@ -173,9 +231,6 @@
                         <div class="text-muted">{{ company.category or 'No category stored' }}</div>
                         <span class="badge text-bg-{{ company.lead_status_badge_class }}">{{ company.lead_status }}</span>
                     </div>
-                </div>
-                <div class="d-flex align-items-start gap-2">
-                    <a href="{{ url_for('search_history.index') }}" class="btn btn-outline-secondary">Search History</a>
                 </div>
             </div>
         </div>
@@ -222,6 +277,10 @@
                             <dd class="col-sm-8">{{ company.category or '-' }}</dd>
                             <dt class="col-sm-4">Country</dt>
 	                            <dd class="col-sm-8">{{ company.country or '-' }}</dd>
+                            <dt class="col-sm-4">State</dt>
+                            <dd class="col-sm-8">{{ company.state or '-' }}</dd>
+                            <dt class="col-sm-4">City</dt>
+                            <dd class="col-sm-8">{{ company.city or '-' }}</dd>
 	                            <dt class="col-sm-4">Industry</dt>
 	                            <dd class="col-sm-8">{{ company.industry or '-' }}</dd>
 	                            <dt class="col-sm-4">Created</dt>
@@ -255,7 +314,7 @@
                                 <div class="value-list">
                                     {% for email in contact_values.emails %}
                                     <div class="contact-value">
-                                        <a href="mailto:{{ email }}" class="text-decoration-none">{{ email }}</a>
+                                        <a href="{{ url_for('search_history.record_email_sent', company_id=company.id, email=email) }}" class="text-decoration-none">{{ email }}</a>
                                     </div>
                                     {% else %}
                                     <span class="text-muted">No emails stored.</span>
@@ -285,7 +344,7 @@
                                             <div class="field-label">Email</div>
                                             <div>
                                                 {% if contact.email %}
-                                                <a href="mailto:{{ contact.email }}">{{ contact.email }}</a>
+                                                <a href="{{ url_for('search_history.record_email_sent', company_id=company.id, email=contact.email) }}">{{ contact.email }}</a>
                                                 {% else %}
                                                 -
                                                 {% endif %}
@@ -295,7 +354,7 @@
                                             <div class="field-label">WhatsApp</div>
                                             <div>
                                                 {% if contact.whatsapp %}
-                                                <a href="{{ contact.whatsapp }}" target="_blank" rel="noopener">{{ contact.whatsapp }}</a>
+                                                <a href="{{ url_for('search_history.record_whatsapp_sent', company_id=company.id, whatsapp=contact.whatsapp) }}" target="_blank" rel="noopener">{{ contact.whatsapp }}</a>
                                                 {% else %}
                                                 -
                                                 {% endif %}
@@ -381,7 +440,11 @@
                             <div class="field-label mb-1">{{ label }}</div>
                             <div class="value-list">
                                 {% for value in values %}
+                                {% if label == 'WhatsApp' %}
+                                <a href="{{ url_for('search_history.record_whatsapp_sent', company_id=company.id, whatsapp=value) }}" target="_blank" rel="noopener">{{ value }}</a>
+                                {% else %}
                                 <a href="{{ value }}" target="_blank" rel="noopener">{{ value }}</a>
+                                {% endif %}
                                 {% else %}
                                 <span class="text-muted">No {{ label }} stored.</span>
                                 {% endfor %}
@@ -402,6 +465,216 @@
                             <dt class="col-sm-4">Reviews Count</dt>
                             <dd class="col-sm-8">{{ company.reviews_count or '-' }}</dd>
                         </dl>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header fw-semibold">Tags</div>
+                    <div class="card-body">
+                        <div class="d-flex flex-wrap gap-2 mb-3">
+                            {% for tag in tags %}
+                            <form method="POST" action="{{ url_for('search_history.update_company_tags', company_id=company.id) }}">
+                                <input type="hidden" name="action" value="remove">
+                                <input type="hidden" name="tag_id" value="{{ tag.id }}">
+                                <button type="submit" class="tag-pill border-0" style="background: {{ tag.color }};">{{ tag.name }} ×</button>
+                            </form>
+                            {% else %}
+                            <span class="text-muted">No tags assigned.</span>
+                            {% endfor %}
+                        </div>
+                        <div class="row g-3">
+                            <div class="col-lg-6">
+                                <form method="POST" action="{{ url_for('search_history.update_company_tags', company_id=company.id) }}" class="row g-2">
+                                    <input type="hidden" name="action" value="add">
+                                    <div class="col">
+                                        <select name="tag_id" class="form-select">
+                                            {% for tag in all_tags %}
+                                            <option value="{{ tag.id }}">{{ tag.name }}</option>
+                                            {% endfor %}
+                                        </select>
+                                    </div>
+                                    <div class="col-auto">
+                                        <button class="btn btn-primary" type="submit" {% if not all_tags %}disabled{% endif %}>Add Tag</button>
+                                    </div>
+                                </form>
+                            </div>
+                            <div class="col-lg-6">
+                                <form method="POST" action="{{ url_for('search_history.update_company_tags', company_id=company.id) }}" class="row g-2">
+                                    <input type="hidden" name="action" value="create">
+                                    <div class="col">
+                                        <input name="tag_name" class="form-control" placeholder="New tag name" required>
+                                    </div>
+                                    <div class="col-auto">
+                                        <input name="tag_color" type="color" class="form-control form-control-color" value="#0f766e" title="Tag color">
+                                    </div>
+                                    <div class="col-auto">
+                                        <button class="btn btn-primary" type="submit">Create</button>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-lg-6">
+                <div class="card h-100">
+                    <div class="card-header fw-semibold">Notes</div>
+                    <div class="card-body module-grid">
+                        <form method="POST" action="{{ url_for('search_history.add_company_note', company_id=company.id) }}" class="module-grid">
+                            <input name="user" class="form-control" value="User" aria-label="User">
+                            <textarea name="note" class="form-control" rows="3" placeholder="Add a note" required></textarea>
+                            <button type="submit" class="btn btn-primary">Add Note</button>
+                        </form>
+                        {% for note in notes %}
+                        <form method="POST" action="{{ url_for('search_history.update_company_note', company_id=company.id, note_id=note.id) }}" class="note-item module-grid">
+                            <div class="d-flex flex-wrap justify-content-between gap-2">
+                                <div class="fw-semibold">{{ note.user }}</div>
+                                <div class="text-muted small">Created {{ note.created_at[:19] if note.created_at else '-' }} · Edited {{ note.edited_at[:19] if note.edited_at else '-' }}</div>
+                            </div>
+                            <input name="user" class="form-control form-control-sm" value="{{ note.user }}">
+                            <textarea name="note" class="form-control" rows="3" required>{{ note.note }}</textarea>
+                            <div class="d-flex gap-2">
+                                <button name="action" value="update" class="btn btn-primary btn-sm" type="submit">Save</button>
+                                <button name="action" value="delete" class="btn btn-outline-danger btn-sm" type="submit">Delete</button>
+                            </div>
+                        </form>
+                        {% else %}
+                        <div class="text-muted">No notes yet.</div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-lg-6">
+                <div class="card h-100">
+                    <div class="card-header fw-semibold">Tasks</div>
+                    <div class="card-body module-grid">
+                        <form method="POST" action="{{ url_for('search_history.add_company_task', company_id=company.id) }}" class="module-grid">
+                            <input name="title" class="form-control" placeholder="Task title" required>
+                            <textarea name="description" class="form-control" rows="2" placeholder="Description"></textarea>
+                            <div class="row g-2">
+                                <div class="col-md-4"><input name="due_date" type="date" class="form-control"></div>
+                                <div class="col-md-4">
+                                    <select name="priority" class="form-select">
+                                        {% for priority in task_priorities %}<option value="{{ priority }}">{{ priority }}</option>{% endfor %}
+                                    </select>
+                                </div>
+                                <div class="col-md-4">
+                                    <select name="status" class="form-select">
+                                        {% for status in task_statuses %}<option value="{{ status }}">{{ status }}</option>{% endfor %}
+                                    </select>
+                                </div>
+                            </div>
+                            <button type="submit" class="btn btn-primary">Create Task</button>
+                        </form>
+                        {% for task in tasks %}
+                        <form method="POST" action="{{ url_for('search_history.update_company_task', company_id=company.id, task_id=task.id) }}" class="task-item module-grid {% if task.is_overdue %}task-overdue{% endif %}">
+                            <div class="d-flex flex-wrap justify-content-between gap-2">
+                                <div class="fw-semibold">{{ task.title }}</div>
+                                <div>
+                                    {% if task.is_overdue %}<span class="badge text-bg-danger">Overdue</span>{% endif %}
+                                    <span class="badge text-bg-secondary">{{ task.priority }}</span>
+                                    <span class="badge text-bg-{{ 'success' if task.status == 'Complete' else 'warning' }}">{{ task.status }}</span>
+                                </div>
+                            </div>
+                            <input name="title" class="form-control" value="{{ task.title }}" required>
+                            <textarea name="description" class="form-control" rows="2">{{ task.description or '' }}</textarea>
+                            <div class="row g-2">
+                                <div class="col-md-4"><input name="due_date" type="date" class="form-control" value="{{ task.due_date or '' }}"></div>
+                                <div class="col-md-4">
+                                    <select name="priority" class="form-select">
+                                        {% for priority in task_priorities %}<option value="{{ priority }}" {% if task.priority == priority %}selected{% endif %}>{{ priority }}</option>{% endfor %}
+                                    </select>
+                                </div>
+                                <div class="col-md-4">
+                                    <select name="status" class="form-select">
+                                        {% for status in task_statuses %}<option value="{{ status }}" {% if task.status == status %}selected{% endif %}>{{ status }}</option>{% endfor %}
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="text-muted small">Due {{ task.due_date or '-' }} · Created {{ task.created_at[:19] if task.created_at else '-' }}</div>
+                            <div class="d-flex gap-2">
+                                <button name="action" value="update" class="btn btn-primary btn-sm" type="submit">Save</button>
+                                {% if task.status != 'Complete' %}
+                                <button name="action" value="complete" class="btn btn-success btn-sm" type="submit">Complete</button>
+                                {% endif %}
+                                <button name="action" value="delete" class="btn btn-outline-danger btn-sm" type="submit">Delete</button>
+                            </div>
+                        </form>
+                        {% else %}
+                        <div class="text-muted">No tasks yet.</div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header fw-semibold">Activity Timeline</div>
+                    <div class="card-body">
+                        <div class="timeline">
+                            {% for activity in activities %}
+                            <div class="timeline-item">
+                                <div class="d-flex flex-wrap justify-content-between gap-2">
+                                    <div class="fw-semibold">{{ activity_labels.get(activity.action_type, activity.action_type) }}</div>
+                                    <div class="text-muted small">{{ activity.created_at[:19] if activity.created_at else '-' }}</div>
+                                </div>
+                                <div>{{ activity.description }}</div>
+                                <div class="text-muted small">{{ activity.user }}</div>
+                            </div>
+                            {% else %}
+                            <div class="text-muted">No activity recorded yet.</div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header fw-semibold">Email Delivery History</div>
+                    <div class="card-body">
+                        <div class="table-responsive">
+                            <table class="table table-striped table-fixed align-middle mb-0">
+                                <thead>
+                                    <tr>
+                                        <th>Campaign</th>
+                                        <th>Email</th>
+                                        <th>Type</th>
+                                        <th>Status</th>
+                                        <th>Scheduled</th>
+                                        <th>Sent</th>
+                                        <th>Reply</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for delivery in email_deliveries %}
+                                    <tr>
+                                        <td>
+                                            {% if delivery.campaign_id %}
+                                            <a href="{{ url_for('search_history.email_campaign_detail', campaign_id=delivery.campaign_id) }}">{{ delivery.campaign_name or delivery.campaign_id }}</a>
+                                            {% else %}
+                                            -
+                                            {% endif %}
+                                        </td>
+                                        <td>{{ delivery.email or '-' }}</td>
+                                        <td>{{ delivery.delivery_type.replace('_', ' ') }}</td>
+                                        <td>{{ delivery.status }}</td>
+                                        <td>{{ delivery.scheduled_at[:19] if delivery.scheduled_at else '-' }}</td>
+                                        <td>{{ delivery.sent_at[:19] if delivery.sent_at else '-' }}</td>
+                                        <td>{{ delivery.replied_at[:19] if delivery.replied_at else '-' }}</td>
+                                    </tr>
+                                    {% else %}
+                                    <tr>
+                                        <td colspan="7" class="text-muted">No email deliveries stored for this company.</td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
                 </div>
             </div>

@@ -107,6 +107,16 @@
 	            color: #1f2933;
         }
 
+        input {
+            border: 1px solid #d9e2dc;
+            border-radius: 6px;
+            color: #1f2933;
+            font-size: 14px;
+            padding: 10px;
+            width: 100%;
+            background: #f7faf8;
+        }
+
         table {
             border-collapse: collapse;
             width: 100%;
@@ -181,6 +191,16 @@
         .status-won { background: #d4edda; color: #155724; }
         .status-lost { background: #f8d7da; color: #721c24; }
 
+        .tag-pill {
+            border-radius: 999px;
+            color: white;
+            display: inline-block;
+            font-size: 12px;
+            font-weight: 700;
+            margin: 2px 4px 2px 0;
+            padding: 4px 8px;
+        }
+
         .pagination {
             align-items: center;
             display: flex;
@@ -241,15 +261,13 @@
     </style>
 </head>
 <body>
+    {% set nav_active = 'companies' %}
+    {% include 'search_history/_nav.html' %}
     <div class="container">
         <div class="header">
             <div>
                 <h1>{{ lead_status_filter or 'All Companies' }}</h1>
                 <p>{{ pagination.total }} compan{{ 'y' if pagination.total == 1 else 'ies' }} found</p>
-            </div>
-            <div class="actions">
-                <a href="{{ url_for('search_history.index') }}" class="btn btn-secondary">Dashboard</a>
-                <a href="{{ url_for('search_history.companies') }}" class="btn btn-primary">All Companies</a>
             </div>
         </div>
 
@@ -267,15 +285,76 @@
                     </div>
                     <div>
                         <label for="country">Country</label>
-                        <input id="country" name="country" value="{{ country_filter }}" placeholder="Country..." style="border: 1px solid #d9e2dc; border-radius: 6px; font-size: 14px; padding: 10px; width: 100%; background: #f7faf8; color: #1f2933;">
+                        <input id="country" name="country" value="{{ country_filter }}" placeholder="Country...">
+                    </div>
+                    <div>
+                        <label for="state">State</label>
+                        <input id="state" name="state" value="{{ state_filter }}" placeholder="State...">
+                    </div>
+                    <div>
+                        <label for="city">City</label>
+                        <input id="city" name="city" value="{{ city_filter }}" placeholder="City...">
+                    </div>
+                    <div>
+                        <label for="category">Category</label>
+                        <input id="category" name="category" value="{{ category_filter }}" placeholder="Category...">
                     </div>
                     <div>
                         <label for="industry">Industry</label>
-                        <input id="industry" name="industry" value="{{ industry_filter }}" placeholder="Industry..." style="border: 1px solid #d9e2dc; border-radius: 6px; font-size: 14px; padding: 10px; width: 100%; background: #f7faf8; color: #1f2933;">
+                        <input id="industry" name="industry" value="{{ industry_filter }}" placeholder="Industry...">
                     </div>
                     <div>
                         <label for="keyword">Company</label>
-                        <input id="keyword" name="keyword" value="{{ keyword_filter }}" placeholder="Company name..." style="border: 1px solid #d9e2dc; border-radius: 6px; font-size: 14px; padding: 10px; width: 100%; background: #f7faf8; color: #1f2933;">
+                        <input id="keyword" name="keyword" value="{{ keyword_filter }}" placeholder="Company name...">
+                    </div>
+                    <div>
+                        <label for="min_rating">Minimum Rating</label>
+                        <input id="min_rating" name="min_rating" value="{{ min_rating_filter }}" placeholder="4.0">
+                    </div>
+                    <div>
+                        <label for="has_website">Website</label>
+                        <select id="has_website" name="has_website">
+                            <option value="">Any</option>
+                            <option value="yes" {% if website_filter == 'yes' %}selected{% endif %}>Has website</option>
+                            <option value="no" {% if website_filter == 'no' %}selected{% endif %}>No website</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label for="has_email">Email</label>
+                        <select id="has_email" name="has_email">
+                            <option value="">Any</option>
+                            <option value="yes" {% if email_filter == 'yes' %}selected{% endif %}>Has email</option>
+                            <option value="no" {% if email_filter == 'no' %}selected{% endif %}>No email</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label for="has_whatsapp">WhatsApp</label>
+                        <select id="has_whatsapp" name="has_whatsapp">
+                            <option value="">Any</option>
+                            <option value="yes" {% if whatsapp_filter == 'yes' %}selected{% endif %}>Has WhatsApp</option>
+                            <option value="no" {% if whatsapp_filter == 'no' %}selected{% endif %}>No WhatsApp</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label for="has_linkedin">LinkedIn</label>
+                        <select id="has_linkedin" name="has_linkedin">
+                            <option value="">Any</option>
+                            <option value="yes" {% if linkedin_filter == 'yes' %}selected{% endif %}>Has LinkedIn</option>
+                            <option value="no" {% if linkedin_filter == 'no' %}selected{% endif %}>No LinkedIn</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label for="tag">Tag</label>
+                        <select id="tag" name="tag">
+                            <option value="">Any tag</option>
+                            {% for tag in tags %}
+                            <option value="{{ tag.id }}" {% if tag_filter == tag.id %}selected{% endif %}>{{ tag.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div>
+                        <label for="sort">Sort</label>
+                        <input id="sort" name="sort" value="{{ sort_filter }}" placeholder="-updated_at,name">
                     </div>
                     <div>
                         <label>&nbsp;</label>
@@ -295,7 +374,9 @@
                         <th>Contact</th>
                         <th>Website</th>
                         <th>Category</th>
-                        <th>Country</th>
+                        <th>Location</th>
+                        <th>Rating</th>
+                        <th>Tags</th>
                         <th>Updated</th>
                     </tr>
                 </thead>
@@ -328,7 +409,18 @@
                             {% endif %}
                         </td>
                         <td>{{ company.category or '-' }}</td>
-                        <td>{{ company.country or '-' }}</td>
+                        <td>
+                            {{ company.country or '-' }}
+                            <div class="muted">{{ company.state or '-' }} · {{ company.city or '-' }}</div>
+                        </td>
+                        <td>{{ company.rating or '-' }}</td>
+                        <td>
+                            {% for tag in company.tags %}
+                            <span class="tag-pill" style="background: {{ tag.color }};">{{ tag.name }}</span>
+                            {% else %}
+                            -
+                            {% endfor %}
+                        </td>
                         <td>{{ company.updated_at[:19] if company.updated_at else '-' }}</td>
                     </tr>
                     {% endfor %}
@@ -339,7 +431,7 @@
         {% if pagination.pages > 1 %}
         <div class="pagination">
             {% if pagination.has_prev %}
-            <a href="{{ url_for('search_history.companies', page=pagination.prev_num, lead_status=lead_status_filter, country=country_filter, industry=industry_filter, keyword=keyword_filter) }}">Previous</a>
+            <a href="{{ url_for('search_history.companies', page=pagination.prev_num, lead_status=lead_status_filter, country=country_filter, state=state_filter, city=city_filter, category=category_filter, industry=industry_filter, keyword=keyword_filter, min_rating=min_rating_filter, has_website=website_filter, has_email=email_filter, has_whatsapp=whatsapp_filter, has_linkedin=linkedin_filter, tag=tag_filter, sort=sort_filter) }}">Previous</a>
             {% else %}
             <span class="disabled">Previous</span>
             {% endif %}
@@ -348,12 +440,12 @@
                 {% if page_num == pagination.page %}
                 <span class="current">{{ page_num }}</span>
                 {% else %}
-                <a href="{{ url_for('search_history.companies', page=page_num, lead_status=lead_status_filter, country=country_filter, industry=industry_filter, keyword=keyword_filter) }}">{{ page_num }}</a>
+                <a href="{{ url_for('search_history.companies', page=page_num, lead_status=lead_status_filter, country=country_filter, state=state_filter, city=city_filter, category=category_filter, industry=industry_filter, keyword=keyword_filter, min_rating=min_rating_filter, has_website=website_filter, has_email=email_filter, has_whatsapp=whatsapp_filter, has_linkedin=linkedin_filter, tag=tag_filter, sort=sort_filter) }}">{{ page_num }}</a>
                 {% endif %}
             {% endfor %}
 
             {% if pagination.has_next %}
-            <a href="{{ url_for('search_history.companies', page=pagination.next_num, lead_status=lead_status_filter, country=country_filter, industry=industry_filter, keyword=keyword_filter) }}">Next</a>
+            <a href="{{ url_for('search_history.companies', page=pagination.next_num, lead_status=lead_status_filter, country=country_filter, state=state_filter, city=city_filter, category=category_filter, industry=industry_filter, keyword=keyword_filter, min_rating=min_rating_filter, has_website=website_filter, has_email=email_filter, has_whatsapp=whatsapp_filter, has_linkedin=linkedin_filter, tag=tag_filter, sort=sort_filter) }}">Next</a>
             {% else %}
             <span class="disabled">Next</span>
             {% endif %}
