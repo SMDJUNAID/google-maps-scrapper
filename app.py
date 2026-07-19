@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import threading
+import time
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -15,7 +16,7 @@ from flask_migrate import Migrate
 from config import get_config
 from extensions import db
 from models import Company, Contact, SearchJob, SearchResult
-from search_history import _record_activity, search_history_bp
+from search_history import _record_activity, process_due_email_work, search_history_bp
 from scraper.contact_finder import enrich_results_combined
 from scraper.email_finder import enrich_results_with_emails
 from scraper.export import to_excel_bytes_from_dicts, to_json_bytes_from_dicts
@@ -32,6 +33,11 @@ migrate = Migrate(app, db)
 
 # Register blueprints
 app.register_blueprint(search_history_bp)
+
+
+@app.before_request
+def ensure_email_scheduler_running():
+    _start_email_scheduler()
 
 DEFAULT_SEARCH_STRINGS = [
     "Pharmaceutical importers",
@@ -61,6 +67,8 @@ class ScrapeJob:
 
 jobs: dict[str, ScrapeJob] = {}
 jobs_lock = threading.Lock()
+email_scheduler_started = False
+email_scheduler_lock = threading.Lock()
 
 SEARCH_JOB_UPDATE_COLUMNS = {
     "status",
@@ -79,6 +87,29 @@ SEARCH_JOB_UPDATE_COLUMNS = {
     "auto_fetch_social",
     "completed_at",
 }
+
+
+def _email_scheduler_loop() -> None:
+    interval = max(15, int(app.config.get("EMAIL_SCHEDULER_INTERVAL_SECONDS", 60)))
+    while True:
+        time.sleep(interval)
+        with app.app_context():
+            try:
+                process_due_email_work()
+            except Exception as exc:
+                app.logger.error("Email scheduler failed: %s", exc)
+
+
+def _start_email_scheduler() -> None:
+    global email_scheduler_started
+    if not app.config.get("EMAIL_SCHEDULER_ENABLED", True):
+        return
+    with email_scheduler_lock:
+        if email_scheduler_started:
+            return
+        email_scheduler_started = True
+        thread = threading.Thread(target=_email_scheduler_loop, daemon=True)
+        thread.start()
 
 
 def _validate_scrape_payload(payload: dict[str, Any]) -> tuple[Any, int] | None:
@@ -830,6 +861,8 @@ if __name__ == "__main__":
     # FLASK_USE_RELOADER=0 to disable it while you're testing the API
     # (e.g. via Postman) without editing files at the same time.
     use_reloader = os.environ.get("FLASK_USE_RELOADER", "1") != "0"
+    if not use_reloader or os.environ.get("WERKZEUG_RUN_MAIN") == "true":
+        _start_email_scheduler()
 
     # threaded=True lets the dev server handle multiple requests at once —
     # important here since /api/scrape/json blocks for the duration of a

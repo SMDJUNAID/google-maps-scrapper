@@ -1,8 +1,12 @@
 """Search History Blueprint for managing and viewing search jobs."""
 
+import smtplib
 from datetime import datetime, timedelta, timezone
+from email.message import EmailMessage
+from html import unescape
+import re
 
-from flask import Blueprint, abort, jsonify, redirect, render_template, request, url_for
+from flask import Blueprint, abort, current_app, jsonify, redirect, render_template, request, url_for
 from models import (
     ActivityTimeline,
     CompanyNote,
@@ -284,11 +288,97 @@ def _parse_datetime_local(value):
     return None
 
 
+def _html_to_text(html):
+    text = re.sub(r'<\s*br\s*/?\s*>', '\n', html or '', flags=re.IGNORECASE)
+    text = re.sub(r'</\s*p\s*>', '\n\n', text, flags=re.IGNORECASE)
+    text = re.sub(r'<[^>]+>', '', text)
+    return unescape(text).strip()
+
+
+def _send_email_via_smtp(to_email, subject, body_html):
+    if not to_email:
+        raise ValueError('No recipient email address.')
+
+    username = current_app.config.get('MAIL_USERNAME')
+    password = current_app.config.get('MAIL_PASSWORD')
+    sender = current_app.config.get('MAIL_DEFAULT_SENDER') or username
+    if not username or not password:
+        raise RuntimeError('Google Workspace SMTP credentials are missing. Set MAIL_USERNAME and MAIL_PASSWORD in .env.')
+
+    message = EmailMessage()
+    message['From'] = sender
+    message['To'] = to_email
+    message['Subject'] = subject
+    message.set_content(_html_to_text(body_html) or subject)
+    message.add_alternative(body_html or '', subtype='html')
+
+    mail_server = current_app.config.get('MAIL_SERVER')
+    mail_port = current_app.config.get('MAIL_PORT')
+    use_ssl = current_app.config.get('MAIL_USE_SSL')
+    use_tls = current_app.config.get('MAIL_USE_TLS')
+
+    try:
+        smtp_class = smtplib.SMTP_SSL if use_ssl else smtplib.SMTP
+        with smtp_class(mail_server, mail_port, timeout=30) as smtp:
+            if use_tls and not use_ssl:
+                smtp.starttls()
+            smtp.login(username, password)
+            smtp.send_message(message)
+    except smtplib.SMTPAuthenticationError as exc:
+        current_app.logger.error(
+            "Google Workspace SMTP authentication failed for %s via %s:%s.",
+            username,
+            mail_server,
+            mail_port,
+        )
+        raise RuntimeError(
+            "Google Workspace SMTP authentication failed. Check MAIL_USERNAME and MAIL_PASSWORD app password."
+        ) from exc
+    except smtplib.SMTPException as exc:
+        current_app.logger.exception("SMTP send failed for recipient %s via %s:%s.", to_email, mail_server, mail_port)
+        raise RuntimeError(f"SMTP send failed: {exc}") from exc
+    except OSError as exc:
+        current_app.logger.exception("Could not connect to SMTP server %s:%s.", mail_server, mail_port)
+        raise RuntimeError(f"Could not connect to SMTP server: {exc}") from exc
+
+
+def _send_delivery(delivery, campaign, activity_type='email_sent'):
+    if not delivery.email:
+        delivery.status = 'Skipped'
+        delivery.error = 'No email address stored for this company.'
+        return False
+
+    try:
+        _send_email_via_smtp(delivery.email, delivery.rendered_subject, delivery.rendered_body_html)
+    except Exception as exc:
+        current_app.logger.warning(
+            "Email delivery %s to company %s failed: %s",
+            delivery.id,
+            delivery.company_id,
+            exc,
+        )
+        delivery.status = 'Failed'
+        delivery.error = str(exc)
+        delivery.sent_at = None
+        return False
+
+    delivery.status = 'Sent'
+    delivery.error = None
+    delivery.sent_at = datetime.now(timezone.utc)
+    _record_activity(
+        delivery.company_id,
+        activity_type,
+        f'Email sent to {delivery.email}.',
+        user=campaign.created_by,
+        metadata={'campaign_id': campaign.id, 'delivery_id': delivery.id},
+    )
+    return True
+
+
 def _create_delivery(campaign, company, delivery_type='initial', scheduled_at=None, status='Sent'):
     email = _first_company_email(company)
     rendered_subject = _render_template_text(campaign.template.subject, company, email=email)
     rendered_body = _render_template_text(campaign.template.body_html, company, email=email)
-    now = datetime.now(timezone.utc)
     delivery = EmailDelivery(
         campaign_id=campaign.id,
         company_id=company.id,
@@ -297,21 +387,13 @@ def _create_delivery(campaign, company, delivery_type='initial', scheduled_at=No
         delivery_type=delivery_type,
         status='Skipped' if not email else status,
         scheduled_at=scheduled_at,
-        sent_at=now if email and status == 'Sent' else None,
+        sent_at=None,
         rendered_subject=rendered_subject,
         rendered_body_html=rendered_body,
         error=None if email else 'No email address stored for this company.',
     )
     db.session.add(delivery)
     db.session.flush()
-    if email and status == 'Sent':
-        _record_activity(
-            company.id,
-            'email_sent' if delivery_type == 'initial' else 'follow_up_sent',
-            f'{delivery_type.replace("_", " ").title()} email recorded for {email}.',
-            user=campaign.created_by,
-            metadata={'campaign_id': campaign.id, 'delivery_id': delivery.id},
-        )
     return delivery
 
 
@@ -352,6 +434,69 @@ def _follow_up_skip_reason(follow_up):
     if not _first_company_email(follow_up.company):
         return 'No email address stored for this company.'
     return None
+
+
+def process_due_email_work(now=None):
+    now = now or datetime.now(timezone.utc)
+    sent_count = 0
+    campaigns = EmailCampaign.query.options(
+        joinedload(EmailCampaign.deliveries).joinedload(EmailDelivery.company),
+        joinedload(EmailCampaign.template),
+    ).filter(
+        EmailCampaign.status == 'Scheduled',
+        EmailCampaign.scheduled_at <= now,
+    ).all()
+
+    for campaign in campaigns:
+        campaign_sent = 0
+        campaign_failed = 0
+        for delivery in campaign.deliveries:
+            if delivery.status != 'Scheduled':
+                continue
+            if _send_delivery(delivery, campaign):
+                campaign_sent += 1
+                sent_count += 1
+            else:
+                campaign_failed += 1
+
+        campaign.status = 'Sent' if campaign_failed == 0 else 'Partial' if campaign_sent else 'Failed'
+        campaign.sent_at = now if campaign_sent else None
+
+    due_follow_ups = (
+        FollowUpAutomation.query.options(
+            joinedload(FollowUpAutomation.company).joinedload(Company.contacts),
+            joinedload(FollowUpAutomation.campaign).joinedload(EmailCampaign.template),
+        )
+        .filter(FollowUpAutomation.status == 'Pending', FollowUpAutomation.scheduled_at <= now)
+        .order_by(FollowUpAutomation.scheduled_at.asc())
+        .all()
+    )
+
+    for follow_up in due_follow_ups:
+        skip_reason = _follow_up_skip_reason(follow_up)
+        if skip_reason:
+            follow_up.status = 'Skipped'
+            follow_up.skip_reason = skip_reason
+            continue
+
+        delivery = _create_delivery(
+            follow_up.campaign,
+            follow_up.company,
+            delivery_type=f'follow_up_day_{follow_up.day_number}',
+            scheduled_at=follow_up.scheduled_at,
+            status='Sending',
+        )
+        if _send_delivery(delivery, follow_up.campaign, activity_type='follow_up_sent'):
+            follow_up.status = 'Sent'
+            follow_up.sent_at = delivery.sent_at
+            sent_count += 1
+        else:
+            follow_up.status = 'Failed'
+            follow_up.skip_reason = delivery.error
+        follow_up.delivery_id = delivery.id
+
+    db.session.commit()
+    return sent_count
 
 
 
@@ -1354,7 +1499,7 @@ def new_email_campaign():
         campaign = EmailCampaign(
             name=name,
             template=template,
-            status='Scheduled' if is_scheduled else 'Sent',
+            status='Scheduled' if is_scheduled else 'Sending',
             scheduled_at=scheduled_at if is_scheduled else None,
             sent_at=None if is_scheduled else now,
             created_by=_current_user(),
@@ -1362,20 +1507,34 @@ def new_email_campaign():
         db.session.add(campaign)
         db.session.flush()
 
+        created_deliveries = []
         for company in selected_companies:
-            _create_delivery(
-                campaign,
-                company,
-                scheduled_at=scheduled_at if is_scheduled else None,
-                status='Scheduled' if is_scheduled else 'Sent',
+            created_deliveries.append(
+                _create_delivery(
+                    campaign,
+                    company,
+                    scheduled_at=scheduled_at if is_scheduled else None,
+                    status='Scheduled' if is_scheduled else 'Sending',
+                )
             )
             _record_activity(
                 company.id,
                 'email_campaign_scheduled' if is_scheduled else 'email_campaign_created',
-                f'Email campaign {"scheduled" if is_scheduled else "sent"}: {campaign.name}.',
+                f'Email campaign {"scheduled" if is_scheduled else "started"}: {campaign.name}.',
                 user=campaign.created_by,
                 metadata={'campaign_id': campaign.id},
             )
+
+        if not is_scheduled:
+            sent_count = 0
+            failed_count = 0
+            for delivery in created_deliveries:
+                if _send_delivery(delivery, campaign):
+                    sent_count += 1
+                else:
+                    failed_count += 1
+            campaign.status = 'Sent' if failed_count == 0 else 'Partial' if sent_count else 'Failed'
+            campaign.sent_at = datetime.now(timezone.utc) if sent_count else None
 
         _schedule_follow_ups(campaign, selected_companies, scheduled_at if is_scheduled else now)
         db.session.commit()
@@ -1454,38 +1613,7 @@ def mark_email_replied(delivery_id):
 
 @search_history_bp.route('/email-campaigns/process-scheduled', methods=['POST'])
 def process_scheduled_campaigns():
-    now = datetime.now(timezone.utc)
-    campaigns = EmailCampaign.query.options(
-        joinedload(EmailCampaign.deliveries).joinedload(EmailDelivery.company),
-        joinedload(EmailCampaign.template),
-    ).filter(
-        EmailCampaign.status == 'Scheduled',
-        EmailCampaign.scheduled_at <= now,
-    ).all()
-
-    sent_count = 0
-    for campaign in campaigns:
-        for delivery in campaign.deliveries:
-            if delivery.status != 'Scheduled':
-                continue
-            if not delivery.email:
-                delivery.status = 'Skipped'
-                delivery.error = 'No email address stored for this company.'
-                continue
-            delivery.status = 'Sent'
-            delivery.sent_at = now
-            sent_count += 1
-            _record_activity(
-                delivery.company_id,
-                'email_sent',
-                f'Scheduled campaign sent to {delivery.email}.',
-                user=campaign.created_by,
-                metadata={'campaign_id': campaign.id, 'delivery_id': delivery.id},
-            )
-        campaign.status = 'Sent'
-        campaign.sent_at = now
-
-    db.session.commit()
+    sent_count = process_due_email_work()
     return redirect(url_for('search_history.email_campaigns', processed=sent_count))
 
 
@@ -1509,36 +1637,7 @@ def follow_ups():
 
 @search_history_bp.route('/follow-ups/process-due', methods=['POST'])
 def process_due_follow_ups():
-    now = datetime.now(timezone.utc)
-    due_follow_ups = (
-        FollowUpAutomation.query.options(
-            joinedload(FollowUpAutomation.company).joinedload(Company.contacts),
-            joinedload(FollowUpAutomation.campaign).joinedload(EmailCampaign.template),
-        )
-        .filter(FollowUpAutomation.status == 'Pending', FollowUpAutomation.scheduled_at <= now)
-        .order_by(FollowUpAutomation.scheduled_at.asc())
-        .all()
-    )
-
-    for follow_up in due_follow_ups:
-        skip_reason = _follow_up_skip_reason(follow_up)
-        if skip_reason:
-            follow_up.status = 'Skipped'
-            follow_up.skip_reason = skip_reason
-            continue
-
-        delivery = _create_delivery(
-            follow_up.campaign,
-            follow_up.company,
-            delivery_type=f'follow_up_day_{follow_up.day_number}',
-            scheduled_at=follow_up.scheduled_at,
-            status='Sent',
-        )
-        follow_up.status = 'Sent'
-        follow_up.sent_at = now
-        follow_up.delivery_id = delivery.id
-
-    db.session.commit()
+    process_due_email_work()
     return redirect(url_for('search_history.follow_ups'))
 
 

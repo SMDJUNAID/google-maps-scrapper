@@ -27,6 +27,34 @@ pip install -r requirements.txt
 playwright install chromium
 ```
 
+## Google Workspace Email Sending
+
+Email campaigns are sent through Google Workspace SMTP for `info@suprememedicalagency.com`. The app reads all mail settings from environment variables and never hardcodes credentials.
+
+Add these values to your `.env`:
+
+```env
+MAIL_SERVER=smtp.gmail.com
+MAIL_PORT=587
+MAIL_USE_TLS=True
+MAIL_USE_SSL=False
+MAIL_USERNAME=info@suprememedicalagency.com
+MAIL_DEFAULT_SENDER=info@suprememedicalagency.com
+MAIL_PASSWORD=your-google-workspace-app-password
+EMAIL_SCHEDULER_ENABLED=1
+EMAIL_SCHEDULER_INTERVAL_SECONDS=60
+```
+
+To create `MAIL_PASSWORD`:
+
+1. Sign in to the Google Workspace account `info@suprememedicalagency.com`.
+2. Enable 2-Step Verification for that account.
+3. Generate a Google App Password for mail/SMTP access.
+4. Paste the app password into `MAIL_PASSWORD` in `.env`.
+5. Restart the Flask app so the new environment variables are loaded.
+
+Do not use the normal Google account password. If authentication or sending fails, the app records the delivery as failed and logs the SMTP error without logging credentials.
+
 ## Web UI
 
 Start the web interface:
