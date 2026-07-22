@@ -145,6 +145,24 @@
 
     .search-string-row input { flex: 1; }
 
+    .template-toolbar {
+      display: grid;
+      grid-template-columns: minmax(240px, 1fr) auto;
+      gap: 0.75rem;
+      align-items: end;
+      margin-top: 0.75rem;
+    }
+
+    .template-actions {
+      display: flex;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+    }
+
+    @media (max-width: 768px) {
+      .template-toolbar { grid-template-columns: 1fr; }
+    }
+
     .btn {
       display: inline-flex;
       align-items: center;
@@ -386,6 +404,79 @@
 
     #resultsSection { display: none; }
     #resultsSection.active { display: block; }
+
+    select {
+      width: 100%;
+      padding: 0.65rem 0.85rem;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      font-size: 0.95rem;
+      cursor: pointer;
+    }
+
+    select:focus {
+      outline: none;
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(15, 118, 110, 0.16);
+    }
+
+    .modal {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.5);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+    }
+
+    .modal-content {
+      background: var(--surface);
+      border-radius: var(--radius);
+      padding: 1.5rem;
+      max-width: 500px;
+      width: 90%;
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.2);
+    }
+
+    .modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 1rem;
+    }
+
+    .modal-header h3 {
+      margin: 0;
+    }
+
+    .btn-close {
+      background: transparent;
+      border: none;
+      font-size: 1.5rem;
+      cursor: pointer;
+      color: var(--muted);
+      padding: 0;
+      width: 30px;
+      height: 30px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .btn-close:hover {
+      color: var(--text);
+    }
+
+    .modal-actions {
+      display: flex;
+      gap: 0.5rem;
+    }
   </style>
 </head>
 <body>
@@ -411,8 +502,27 @@
           </div>
           <div>
             <label for="maxResults">Max Results</label>
-            <input type="number" id="maxResults" name="maxResults" value="50" min="1" max="500" required>
-            <p class="hint">Maximum unique businesses to scrape (1–500).</p>
+            <input type="number" id="maxResults" name="maxResults" value="50" min="1" required>
+            <p class="hint">Maximum unique businesses to scrape (no limit).</p>
+          </div>
+        </div>
+
+        <div class="search-strings">
+          <label for="industry">Industry Template (Optional)</label>
+          <p class="hint">Choose a saved industry to load its search strings, or create a new one from the terms below.</p>
+          <select id="industry" name="industry">
+            <option value="custom">Custom</option>
+          </select>
+          <div class="template-toolbar">
+            <div>
+              <label for="industryName">Industry Name</label>
+              <input type="text" id="industryName" name="industryName" placeholder="e.g. Pharmaceutical distributors">
+            </div>
+            <div class="template-actions">
+              <button type="button" class="btn btn-secondary" id="newIndustryBtn">New</button>
+              <button type="button" class="btn btn-secondary" id="updateIndustryBtn">Update</button>
+              <button type="button" class="btn btn-danger" id="deleteIndustryBtn">Delete</button>
+            </div>
           </div>
         </div>
 
@@ -423,6 +533,22 @@
           <div class="actions">
             <button type="button" class="btn btn-secondary" id="addStringBtn">+ Add search string</button>
             <button type="button" class="btn btn-secondary" id="resetStringsBtn">Reset defaults</button>
+            <button type="button" class="btn btn-secondary" id="pasteJsonBtn">📋 Paste JSON Array</button>
+            <button type="button" class="btn btn-secondary" id="saveTemplateBtn">Save Template</button>
+          </div>
+        </div>
+
+        <div id="jsonPasteModal" class="modal" style="display: none;">
+          <div class="modal-content">
+            <div class="modal-header">
+              <h3>Paste Search Strings as JSON</h3>
+              <button type="button" class="btn-close" id="closeJsonModal">&times;</button>
+            </div>
+            <textarea id="jsonInput" placeholder='["search string 1", "search string 2", "search string 3"]' style="width: 100%; height: 150px; padding: 0.65rem; border: 1px solid var(--border); border-radius: 8px; font-family: monospace;"></textarea>
+            <div class="modal-actions" style="margin-top: 1rem; display: flex; gap: 0.5rem;">
+              <button type="button" class="btn btn-primary" id="confirmJsonBtn">Import</button>
+              <button type="button" class="btn btn-secondary" id="cancelJsonBtn">Cancel</button>
+            </div>
           </div>
         </div>
 
@@ -501,14 +627,22 @@
 
     let currentJobId = null;
     let pollTimer = null;
+    let searchTemplates = [];
 
     const els = {
       form: document.getElementById("scrapeForm"),
       country: document.getElementById("country"),
       maxResults: document.getElementById("maxResults"),
+      industry: document.getElementById("industry"),
+      industryName: document.getElementById("industryName"),
       stringsContainer: document.getElementById("searchStringsContainer"),
       addStringBtn: document.getElementById("addStringBtn"),
       resetStringsBtn: document.getElementById("resetStringsBtn"),
+      pasteJsonBtn: document.getElementById("pasteJsonBtn"),
+      saveTemplateBtn: document.getElementById("saveTemplateBtn"),
+      newIndustryBtn: document.getElementById("newIndustryBtn"),
+      updateIndustryBtn: document.getElementById("updateIndustryBtn"),
+      deleteIndustryBtn: document.getElementById("deleteIndustryBtn"),
       startBtn: document.getElementById("startBtn"),
       loadingPanel: document.getElementById("loadingPanel"),
       progressMessage: document.getElementById("progressMessage"),
@@ -524,6 +658,11 @@
       downloadJsonBtn: document.getElementById("downloadJsonBtn"),
       downloadExcelBtn: document.getElementById("downloadExcelBtn"),
       errorBox: document.getElementById("errorBox"),
+      jsonModal: document.getElementById("jsonPasteModal"),
+      jsonInput: document.getElementById("jsonInput"),
+      closeJsonModal: document.getElementById("closeJsonModal"),
+      confirmJsonBtn: document.getElementById("confirmJsonBtn"),
+      cancelJsonBtn: document.getElementById("cancelJsonBtn"),
     };
 
     function showError(message) {
@@ -534,6 +673,86 @@
     function clearError() {
       els.errorBox.textContent = "";
       els.errorBox.classList.remove("active");
+    }
+
+    function getSelectedTemplate() {
+      const templateId = Number(els.industry.value);
+      if (!templateId) return null;
+      return searchTemplates.find((template) => template.id === templateId) || null;
+    }
+
+    function templateLabel(template) {
+      return template.name === template.industry
+        ? template.industry
+        : `${template.industry} - ${template.name}`;
+    }
+
+    function renderIndustryOptions(selectedId = "") {
+      els.industry.innerHTML = '<option value="custom">Custom</option>';
+      searchTemplates.forEach((template) => {
+        const option = document.createElement("option");
+        option.value = String(template.id);
+        option.textContent = templateLabel(template);
+        els.industry.appendChild(option);
+      });
+      els.industry.value = selectedId ? String(selectedId) : "custom";
+    }
+
+    async function loadSearchTemplates(selectedId = "") {
+      const response = await fetch("/api/search-string-templates");
+      if (!response.ok) {
+        throw new Error("Failed to load saved industries.");
+      }
+      searchTemplates = await response.json();
+      renderIndustryOptions(selectedId);
+    }
+
+    function setSelectedTemplate(template) {
+      if (!template) {
+        els.industry.value = "custom";
+        els.industryName.value = "";
+        return;
+      }
+      els.industry.value = String(template.id);
+      els.industryName.value = template.industry;
+      renderSearchStrings(template.search_strings || DEFAULT_STRINGS);
+    }
+
+    async function saveIndustryTemplate({ templateId = null } = {}) {
+      const industry = els.industryName.value.trim();
+      const searchStrings = getSearchStrings();
+
+      if (!industry) {
+        showError("Please enter an industry name.");
+        els.industryName.focus();
+        return null;
+      }
+      if (!searchStrings.length) {
+        showError("Please add at least one search string.");
+        return null;
+      }
+
+      const body = {
+        name: industry,
+        industry,
+        search_strings: searchStrings,
+        description: `Search strings for ${industry}`
+      };
+      const url = templateId ? `/api/search-string-templates/${templateId}` : "/api/search-string-templates";
+      const method = templateId ? "PUT" : "POST";
+      const response = await fetch(url, {
+        method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to save industry.");
+      }
+      await loadSearchTemplates(data.id);
+      setSelectedTemplate(data);
+      clearError();
+      return data;
     }
 
     function createStringRow(value = "") {
@@ -577,6 +796,10 @@
       els.startBtn.disabled = active;
       els.addStringBtn.disabled = active;
       els.resetStringsBtn.disabled = active;
+      els.saveTemplateBtn.disabled = active;
+      els.newIndustryBtn.disabled = active;
+      els.updateIndustryBtn.disabled = active;
+      els.deleteIndustryBtn.disabled = active;
       els.fetchEmailsBtn.disabled = active || !currentJobId;
       els.fetchSocialBtn.disabled = active || !currentJobId;
     }
@@ -704,6 +927,8 @@
       const country = els.country.value.trim();
       const maxResults = parseInt(els.maxResults.value, 10);
       const searchStrings = getSearchStrings();
+      const selectedTemplate = getSelectedTemplate();
+      const industry = els.industryName.value.trim() || (selectedTemplate ? selectedTemplate.industry : "");
 
       if (!country) {
         showError("Please enter a country.");
@@ -726,6 +951,7 @@
             country,
             max_results: maxResults,
             search_strings: searchStrings,
+            industry: industry || "custom",
             auto_fetch_emails: els.autoFetchEmails.checked,
             auto_fetch_social: els.autoFetchSocial.checked,
           }),
@@ -804,9 +1030,124 @@
     els.addStringBtn.addEventListener("click", () => {
       els.stringsContainer.appendChild(createStringRow());
     });
-    els.resetStringsBtn.addEventListener("click", () => renderSearchStrings(DEFAULT_STRINGS));
+    els.resetStringsBtn.addEventListener("click", () => {
+      els.industry.value = "custom";
+      els.industryName.value = "";
+      renderSearchStrings(DEFAULT_STRINGS);
+    });
+
+    els.saveTemplateBtn.addEventListener("click", async () => {
+      try {
+        const selectedTemplate = getSelectedTemplate();
+        await saveIndustryTemplate({ templateId: selectedTemplate ? selectedTemplate.id : null });
+      } catch (err) {
+        showError(`Failed to save template: ${err.message}`);
+      }
+    });
+
+    els.newIndustryBtn.addEventListener("click", () => {
+      els.industry.value = "custom";
+      els.industryName.value = "";
+      renderSearchStrings([""]);
+      els.industryName.focus();
+      clearError();
+    });
+
+    els.updateIndustryBtn.addEventListener("click", async () => {
+      const selectedTemplate = getSelectedTemplate();
+      if (!selectedTemplate) {
+        showError("Choose a saved industry before updating.");
+        return;
+      }
+      try {
+        await saveIndustryTemplate({ templateId: selectedTemplate.id });
+      } catch (err) {
+        showError(`Failed to update industry: ${err.message}`);
+      }
+    });
+
+    els.deleteIndustryBtn.addEventListener("click", async () => {
+      const selectedTemplate = getSelectedTemplate();
+      if (!selectedTemplate) {
+        showError("Choose a saved industry before deleting.");
+        return;
+      }
+      if (!confirm(`Delete "${templateLabel(selectedTemplate)}"? This only deletes the saved industry template, not past searches or scraped companies.`)) {
+        return;
+      }
+      try {
+        const response = await fetch(`/api/search-string-templates/${selectedTemplate.id}`, { method: "DELETE" });
+        const data = await response.json();
+        if (!response.ok) {
+          throw new Error(data.error || "Failed to delete industry.");
+        }
+        await loadSearchTemplates();
+        els.industryName.value = "";
+        renderSearchStrings(DEFAULT_STRINGS);
+        clearError();
+      } catch (err) {
+        showError(`Failed to delete industry: ${err.message}`);
+      }
+    });
+
+    // JSON Paste Modal Handler
+    els.pasteJsonBtn.addEventListener("click", () => {
+      els.jsonInput.value = "";
+      els.jsonModal.style.display = "flex";
+    });
+
+    els.closeJsonModal.addEventListener("click", () => {
+      els.jsonModal.style.display = "none";
+    });
+
+    els.cancelJsonBtn.addEventListener("click", () => {
+      els.jsonModal.style.display = "none";
+    });
+
+    els.confirmJsonBtn.addEventListener("click", () => {
+      try {
+        const jsonText = els.jsonInput.value.trim();
+        const parsed = JSON.parse(jsonText);
+        
+        if (!Array.isArray(parsed)) {
+          throw new Error("Must be an array of strings");
+        }
+        
+        const strings = parsed.filter(item => typeof item === "string" && item.trim()).map(s => s.trim());
+        if (strings.length === 0) {
+          throw new Error("No valid strings found");
+        }
+        
+        renderSearchStrings(strings);
+        els.jsonModal.style.display = "none";
+        clearError();
+      } catch (err) {
+        showError(`Invalid JSON: ${err.message}`);
+      }
+    });
+
+    // Close modal when clicking outside
+    els.jsonModal.addEventListener("click", (e) => {
+      if (e.target === els.jsonModal) {
+        els.jsonModal.style.display = "none";
+      }
+    });
+
+    // Industry Selection Handler
+    els.industry.addEventListener("change", async (e) => {
+      const selectedTemplate = getSelectedTemplate();
+      if (selectedTemplate) {
+        setSelectedTemplate(selectedTemplate);
+      } else {
+        els.industryName.value = "";
+      }
+    });
 
     renderSearchStrings(DEFAULT_STRINGS);
+    loadSearchTemplates().catch((err) => {
+      console.warn(err);
+      showError("Saved industries could not be loaded. You can still run a custom search.");
+    });
   </script>
 </body>
 </html>

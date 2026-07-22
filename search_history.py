@@ -6,7 +6,7 @@ from email.message import EmailMessage
 from html import unescape
 import re
 
-from flask import Blueprint, abort, current_app, jsonify, redirect, render_template, request, url_for
+from flask import Blueprint, abort, current_app, jsonify, redirect, render_template, request, send_file, url_for
 from models import (
     ActivityTimeline,
     CompanyNote,
@@ -22,6 +22,7 @@ from models import (
     Tag,
 )
 from extensions import db
+from scraper.export import to_excel_bytes_from_dicts, to_json_bytes_from_dicts
 from sqlalchemy import and_, cast, Date, Float, func, or_
 from sqlalchemy.orm import joinedload
 
@@ -288,6 +289,26 @@ def _parse_datetime_local(value):
     return None
 
 
+def _parse_follow_up_days(value):
+    days = []
+    if not value:
+        return days
+    for part in re.split(r'[\s,;]+', value.strip()):
+        if not part:
+            continue
+        try:
+            day = int(part)
+        except ValueError:
+            continue
+        if day > 0:
+            days.append(day)
+    return sorted(set(days))
+
+
+def _format_follow_up_days(days):
+    return ','.join(str(day) for day in sorted(days)) if days else ''
+
+
 def _html_to_text(html):
     text = re.sub(r'<\s*br\s*/?\s*>', '\n', html or '', flags=re.IGNORECASE)
     text = re.sub(r'</\s*p\s*>', '\n\n', text, flags=re.IGNORECASE)
@@ -375,14 +396,15 @@ def _send_delivery(delivery, campaign, activity_type='email_sent'):
     return True
 
 
-def _create_delivery(campaign, company, delivery_type='initial', scheduled_at=None, status='Sent'):
+def _create_delivery(campaign, company, delivery_type='initial', scheduled_at=None, status='Sent', template=None):
     email = _first_company_email(company)
-    rendered_subject = _render_template_text(campaign.template.subject, company, email=email)
-    rendered_body = _render_template_text(campaign.template.body_html, company, email=email)
+    template = template or campaign.template
+    rendered_subject = _render_template_text(template.subject, company, email=email)
+    rendered_body = _render_template_text(template.body_html, company, email=email)
     delivery = EmailDelivery(
         campaign_id=campaign.id,
         company_id=company.id,
-        template_id=campaign.template_id,
+        template_id=template.id if template else campaign.template_id,
         email=email or None,
         delivery_type=delivery_type,
         status='Skipped' if not email else status,
@@ -397,18 +419,23 @@ def _create_delivery(campaign, company, delivery_type='initial', scheduled_at=No
     return delivery
 
 
-def _schedule_follow_ups(campaign, companies, base_time):
+def _schedule_follow_ups(campaign, companies, base_time, follow_up_days=None, follow_up_template=None):
+    if follow_up_days is None:
+        follow_up_days = FOLLOW_UP_DAYS
     for company in companies:
         if _normalize_lead_status(company.lead_status) in {'Won', 'Lost'}:
             continue
         if not _first_company_email(company):
             continue
-        for day_number in FOLLOW_UP_DAYS:
+        template_id = follow_up_template.id if follow_up_template else campaign.template_id
+        for day_number in sorted(set(follow_up_days)):
+            if day_number <= 0:
+                continue
             db.session.add(
                 FollowUpAutomation(
                     campaign_id=campaign.id,
                     company_id=company.id,
-                    template_id=campaign.template_id,
+                    template_id=template_id,
                     day_number=day_number,
                     scheduled_at=base_time + timedelta(days=day_number),
                 )
@@ -443,6 +470,7 @@ def process_due_email_work(now=None):
         joinedload(EmailCampaign.deliveries).joinedload(EmailDelivery.company),
         joinedload(EmailCampaign.template),
     ).filter(
+        EmailCampaign.deleted_at.is_(None),
         EmailCampaign.status == 'Scheduled',
         EmailCampaign.scheduled_at <= now,
     ).all()
@@ -466,8 +494,13 @@ def process_due_email_work(now=None):
         FollowUpAutomation.query.options(
             joinedload(FollowUpAutomation.company).joinedload(Company.contacts),
             joinedload(FollowUpAutomation.campaign).joinedload(EmailCampaign.template),
+            joinedload(FollowUpAutomation.template),
         )
-        .filter(FollowUpAutomation.status == 'Pending', FollowUpAutomation.scheduled_at <= now)
+        .filter(
+            FollowUpAutomation.deleted_at.is_(None),
+            FollowUpAutomation.status == 'Pending',
+            FollowUpAutomation.scheduled_at <= now,
+        )
         .order_by(FollowUpAutomation.scheduled_at.asc())
         .all()
     )
@@ -485,6 +518,7 @@ def process_due_email_work(now=None):
             delivery_type=f'follow_up_day_{follow_up.day_number}',
             scheduled_at=follow_up.scheduled_at,
             status='Sending',
+            template=follow_up.template,
         )
         if _send_delivery(delivery, follow_up.campaign, activity_type='follow_up_sent'):
             follow_up.status = 'Sent'
@@ -822,6 +856,79 @@ def detail(search_job_id):
         companies_dict=companies_dict,
         pagination=pagination_dict,
     )
+
+
+@search_history_bp.route('/<search_job_id>/download/<fmt>')
+def download_search_results(search_job_id, fmt):
+    """Download search results as JSON or Excel."""
+    search_job = db.session.get(SearchJob, search_job_id)
+    if not search_job:
+        abort(404)
+    
+    # Get all companies for this search job
+    search_results = SearchResult.query.filter_by(search_job_id=search_job_id).all()
+    
+    if not search_results:
+        return jsonify({"error": "No results to download."}), 400
+    
+    company_ids = [r.company_id for r in search_results if r.company_id]
+    companies = Company.query.filter(Company.id.in_(company_ids)).all()
+    
+    # Build export data from companies
+    export_data = []
+    for company in companies:
+        company_data = {
+            'name': company.name,
+            'address': company.address,
+            'website': company.website,
+            'category': company.category,
+            'rating': company.rating,
+            'reviews_count': company.reviews_count,
+            'place_url': company.place_url,
+            'country': company.country,
+            'state': company.state,
+            'city': company.city,
+            'industry': company.industry,
+        }
+        
+        # Add contact information (email, phone, etc.)
+        latest_contacts = _latest_contacts_by_type(company.contacts)
+        if latest_contacts:
+            for contact in latest_contacts:
+                company_data['phone'] = contact.phone or ''
+                company_data['email'] = contact.email or ''
+                company_data['linkedin'] = contact.linkedin or ''
+                company_data['instagram'] = contact.instagram or ''
+                company_data['whatsapp'] = contact.whatsapp or ''
+                break
+        
+        export_data.append(company_data)
+    
+    # Generate filename
+    slug = search_job.country.lower().replace(" ", "_") if search_job.country else "results"
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    
+    if fmt == "json":
+        buffer = to_json_bytes_from_dicts(export_data)
+        filename = f"{slug}_results_{timestamp}.json"
+        return send_file(
+            buffer,
+            mimetype="application/json",
+            as_attachment=True,
+            download_name=filename,
+        )
+    
+    elif fmt == "excel":
+        buffer = to_excel_bytes_from_dicts(export_data)
+        filename = f"{slug}_results_{timestamp}.xlsx"
+        return send_file(
+            buffer,
+            mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            as_attachment=True,
+            download_name=filename,
+        )
+    
+    return jsonify({"error": "Unsupported format. Use json or excel."}), 400
 
 
 @search_history_bp.route('/company/<int:company_id>')
@@ -1365,6 +1472,7 @@ def delete_email_template(template_id):
 def email_campaigns():
     campaigns = (
         EmailCampaign.query.options(joinedload(EmailCampaign.template), joinedload(EmailCampaign.deliveries))
+        .filter(EmailCampaign.deleted_at.is_(None))
         .order_by(EmailCampaign.created_at.desc())
         .all()
     )
@@ -1381,6 +1489,7 @@ def new_email_campaign():
     previews = []
     selected_company_ids = [int(value) for value in request.form.getlist('company_ids') if value.isdigit()]
     selected_template_id = request.form.get('template_id', type=int)
+    selected_follow_up_template_id = request.form.get('follow_up_template_id', type=int)
     lead_status_filter = request.form.get('lead_status', '')
     country_filter = request.form.get('country', '')
     tag_filter = request.form.get('tag_id', type=int)
@@ -1388,6 +1497,9 @@ def new_email_campaign():
     email_filter = request.form.get('has_email', '')
     campaign_name = request.form.get('name', '').strip()
     scheduled_at_value = request.form.get('scheduled_at', '')
+    schedule_mode = request.form.get('schedule_mode', 'batch')
+    batch_days_value = request.form.get('batch_days', '30')
+    follow_up_days_value = request.form.get('follow_up_days', ','.join(str(day) for day in FOLLOW_UP_DAYS))
 
     companies_query = Company.query.options(joinedload(Company.contacts), joinedload(Company.tags))
     if lead_status_filter in LEAD_STATUSES:
@@ -1414,7 +1526,6 @@ def new_email_campaign():
     companies = (
         companies_query
         .order_by(Company.updated_at.desc(), Company.name.asc())
-        .limit(250)
         .all()
     )
     for company in companies:
@@ -1446,9 +1557,38 @@ def new_email_campaign():
                 email_filter=email_filter,
                 selected_company_ids=selected_company_ids,
                 selected_template_id=selected_template_id,
+                selected_follow_up_template_id=selected_follow_up_template_id,
                 previews=previews,
                 campaign_name=campaign_name,
                 scheduled_at=scheduled_at_value,
+                schedule_mode=schedule_mode,
+                batch_days=batch_days_value,
+                follow_up_days=follow_up_days_value,
+            )
+
+        if action == 'select_all':
+            selected_company_ids = [company.id for company in companies]
+            return render_template(
+                'search_history/email_campaign_form.html',
+                templates=templates,
+                companies=companies,
+                countries=countries,
+                tags=tags,
+                lead_statuses=LEAD_STATUSES,
+                lead_status_filter=lead_status_filter,
+                country_filter=country_filter,
+                tag_filter=tag_filter,
+                website_filter=website_filter,
+                email_filter=email_filter,
+                selected_company_ids=selected_company_ids,
+                selected_template_id=selected_template_id,
+                selected_follow_up_template_id=selected_follow_up_template_id,
+                previews=previews,
+                campaign_name=campaign_name,
+                scheduled_at=scheduled_at_value,
+                schedule_mode=schedule_mode,
+                batch_days=batch_days_value,
+                follow_up_days=follow_up_days_value,
             )
 
         template = db.session.get(EmailTemplate, selected_template_id) if selected_template_id else None
@@ -1457,6 +1597,17 @@ def new_email_campaign():
             abort(400, description='Template is required.')
         if not selected_companies:
             abort(400, description='At least one company is required.')
+
+        follow_up_days = _parse_follow_up_days(follow_up_days_value)
+        if not follow_up_days:
+            follow_up_days = FOLLOW_UP_DAYS
+
+        try:
+            batch_days = int(batch_days_value)
+        except (ValueError, TypeError):
+            batch_days = 30
+        if batch_days < 1:
+            batch_days = 30
 
         for company in selected_companies:
             email = _first_company_email(company)
@@ -1484,9 +1635,13 @@ def new_email_campaign():
                 email_filter=email_filter,
                 selected_company_ids=selected_company_ids,
                 selected_template_id=selected_template_id,
+                selected_follow_up_template_id=selected_follow_up_template_id,
                 previews=previews,
                 campaign_name=campaign_name,
                 scheduled_at=scheduled_at_value,
+                schedule_mode=schedule_mode,
+                batch_days=batch_days_value,
+                follow_up_days=follow_up_days_value,
             )
 
         name = campaign_name or f'Campaign {datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M")}'
@@ -1503,27 +1658,58 @@ def new_email_campaign():
             scheduled_at=scheduled_at if is_scheduled else None,
             sent_at=None if is_scheduled else now,
             created_by=_current_user(),
+            follow_up_days=_format_follow_up_days(follow_up_days),
         )
         db.session.add(campaign)
         db.session.flush()
 
+        follow_up_template = db.session.get(EmailTemplate, selected_follow_up_template_id) if selected_follow_up_template_id else None
         created_deliveries = []
-        for company in selected_companies:
-            created_deliveries.append(
-                _create_delivery(
-                    campaign,
-                    company,
-                    scheduled_at=scheduled_at if is_scheduled else None,
-                    status='Scheduled' if is_scheduled else 'Sending',
+        if is_scheduled and schedule_mode == 'batch':
+            total_companies = len(selected_companies)
+            batch_days = min(batch_days, total_companies)
+            batch_size = total_companies // batch_days
+            remainder = total_companies % batch_days
+            company_index = 0
+            for day_index in range(batch_days):
+                companies_today = batch_size + (1 if day_index < remainder else 0)
+                for _ in range(companies_today):
+                    company = selected_companies[company_index]
+                    company_schedule_at = scheduled_at + timedelta(days=day_index)
+                    created_deliveries.append(
+                        _create_delivery(
+                            campaign,
+                            company,
+                            scheduled_at=company_schedule_at,
+                            status='Scheduled',
+                        )
+                    )
+                    _record_activity(
+                        company.id,
+                        'email_campaign_scheduled',
+                        f'Email campaign scheduled: {campaign.name}.',
+                        user=campaign.created_by,
+                        metadata={'campaign_id': campaign.id},
+                    )
+                    _schedule_follow_ups(campaign, [company], company_schedule_at, follow_up_days, follow_up_template)
+                    company_index += 1
+        else:
+            for company in selected_companies:
+                created_deliveries.append(
+                    _create_delivery(
+                        campaign,
+                        company,
+                        scheduled_at=scheduled_at if is_scheduled else None,
+                        status='Scheduled' if is_scheduled else 'Sending',
+                    )
                 )
-            )
-            _record_activity(
-                company.id,
-                'email_campaign_scheduled' if is_scheduled else 'email_campaign_created',
-                f'Email campaign {"scheduled" if is_scheduled else "started"}: {campaign.name}.',
-                user=campaign.created_by,
-                metadata={'campaign_id': campaign.id},
-            )
+                _record_activity(
+                    company.id,
+                    'email_campaign_scheduled' if is_scheduled else 'email_campaign_created',
+                    f'Email campaign {"scheduled" if is_scheduled else "started"}: {campaign.name}.',
+                    user=campaign.created_by,
+                    metadata={'campaign_id': campaign.id},
+                )
 
         if not is_scheduled:
             sent_count = 0
@@ -1535,8 +1721,8 @@ def new_email_campaign():
                     failed_count += 1
             campaign.status = 'Sent' if failed_count == 0 else 'Partial' if sent_count else 'Failed'
             campaign.sent_at = datetime.now(timezone.utc) if sent_count else None
-
-        _schedule_follow_ups(campaign, selected_companies, scheduled_at if is_scheduled else now)
+        elif schedule_mode != 'batch':
+            _schedule_follow_ups(campaign, selected_companies, scheduled_at, follow_up_days, follow_up_template)
         db.session.commit()
         return redirect(url_for('search_history.email_campaign_detail', campaign_id=campaign.id))
 
@@ -1554,9 +1740,13 @@ def new_email_campaign():
         email_filter=email_filter,
         selected_company_ids=selected_company_ids,
         selected_template_id=selected_template_id,
+        selected_follow_up_template_id=None,
         previews=previews,
         campaign_name='',
         scheduled_at='',
+        schedule_mode='batch',
+        batch_days='30',
+        follow_up_days=','.join(str(day) for day in FOLLOW_UP_DAYS),
     )
 
 
@@ -1568,19 +1758,29 @@ def email_campaign_detail(campaign_id):
             joinedload(EmailCampaign.deliveries).joinedload(EmailDelivery.company),
             joinedload(EmailCampaign.follow_ups).joinedload(FollowUpAutomation.company),
         )
-        .filter_by(id=campaign_id)
+        .filter(EmailCampaign.id == campaign_id, EmailCampaign.deleted_at.is_(None))
         .first()
     )
+    templates = EmailTemplate.query.order_by(EmailTemplate.name.asc()).all()
     if not campaign:
         abort(404)
 
     deliveries = sorted(campaign.deliveries, key=lambda delivery: delivery.created_at, reverse=True)
-    follow_ups = sorted(campaign.follow_ups, key=lambda follow_up: follow_up.scheduled_at)
+    follow_ups = sorted([follow_up for follow_up in campaign.follow_ups if follow_up.deleted_at is None], key=lambda follow_up: follow_up.scheduled_at)
+    company_options = []
+    company_ids = set()
+    for delivery in deliveries:
+        if delivery.company and delivery.company_id not in company_ids:
+            company_options.append(delivery.company)
+            company_ids.add(delivery.company_id)
+
     return render_template(
         'search_history/email_campaign_detail.html',
         campaign=campaign,
         deliveries=deliveries,
         follow_ups=follow_ups,
+        company_options=company_options,
+        templates=templates,
         now=datetime.now(timezone.utc),
     )
 
@@ -1603,7 +1803,7 @@ def mark_email_replied(delivery_id):
         campaign_id=delivery.campaign_id,
         company_id=delivery.company_id,
         status='Pending',
-    ).all()
+    ).filter(FollowUpAutomation.deleted_at.is_(None)).all()
     for follow_up in pending_follow_ups:
         follow_up.status = 'Cancelled'
         follow_up.skip_reason = 'Lead replied.'
@@ -1620,17 +1820,28 @@ def process_scheduled_campaigns():
 @search_history_bp.route('/follow-ups')
 def follow_ups():
     status_filter = request.args.get('status', '')
+    scheduled_date = request.args.get('scheduled_date', '')
+    now = datetime.now(timezone.utc)
     query = FollowUpAutomation.query.options(
         joinedload(FollowUpAutomation.company),
         joinedload(FollowUpAutomation.campaign),
-    )
+        joinedload(FollowUpAutomation.template),
+    ).filter(FollowUpAutomation.deleted_at.is_(None))
     if status_filter:
         query = query.filter(FollowUpAutomation.status == status_filter)
+    if scheduled_date == 'today':
+        today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        tomorrow_start = today_start + timedelta(days=1)
+        query = query.filter(
+            FollowUpAutomation.scheduled_at >= today_start,
+            FollowUpAutomation.scheduled_at < tomorrow_start,
+        )
     follow_up_rows = query.order_by(FollowUpAutomation.scheduled_at.asc()).limit(300).all()
     return render_template(
         'search_history/follow_ups.html',
         follow_ups=follow_up_rows,
         status_filter=status_filter,
+        scheduled_date=scheduled_date,
         now=datetime.now(timezone.utc),
     )
 
@@ -1639,6 +1850,136 @@ def follow_ups():
 def process_due_follow_ups():
     process_due_email_work()
     return redirect(url_for('search_history.follow_ups'))
+
+
+@search_history_bp.route('/follow-ups/send-selected', methods=['POST'])
+def send_selected_follow_ups():
+    selected_ids = [int(value) for value in request.form.getlist('follow_up_ids') if value.isdigit()]
+    if not selected_ids:
+        return redirect(url_for('search_history.follow_ups'))
+
+    follow_ups = FollowUpAutomation.query.options(
+        joinedload(FollowUpAutomation.company).joinedload(Company.contacts),
+        joinedload(FollowUpAutomation.campaign).joinedload(EmailCampaign.template),
+        joinedload(FollowUpAutomation.template),
+    ).filter(
+        FollowUpAutomation.deleted_at.is_(None),
+        FollowUpAutomation.status == 'Pending',
+        FollowUpAutomation.id.in_(selected_ids),
+    ).all()
+
+    for follow_up in follow_ups:
+        skip_reason = _follow_up_skip_reason(follow_up)
+        if skip_reason:
+            follow_up.status = 'Skipped'
+            follow_up.skip_reason = skip_reason
+            continue
+
+        delivery = _create_delivery(
+            follow_up.campaign,
+            follow_up.company,
+            delivery_type=f'follow_up_day_{follow_up.day_number}',
+            scheduled_at=datetime.now(timezone.utc),
+            status='Sending',
+            template=follow_up.template,
+        )
+        if _send_delivery(delivery, follow_up.campaign, activity_type='follow_up_sent'):
+            follow_up.status = 'Sent'
+            follow_up.sent_at = delivery.sent_at
+        else:
+            follow_up.status = 'Failed'
+            follow_up.skip_reason = delivery.error
+        follow_up.delivery_id = delivery.id
+
+    db.session.commit()
+    return redirect(url_for('search_history.follow_ups'))
+
+
+@search_history_bp.route('/email-campaigns/<int:campaign_id>/delete', methods=['POST'])
+def delete_email_campaign(campaign_id):
+    campaign = db.session.get(EmailCampaign, campaign_id)
+    if not campaign or campaign.deleted_at is not None:
+        abort(404)
+    campaign.deleted_at = datetime.now(timezone.utc)
+    for follow_up in campaign.follow_ups:
+        if follow_up.deleted_at is None:
+            follow_up.deleted_at = datetime.now(timezone.utc)
+    db.session.commit()
+    return redirect(url_for('search_history.email_campaigns'))
+
+
+@search_history_bp.route('/follow-ups/<int:follow_up_id>/delete', methods=['POST'])
+def delete_follow_up(follow_up_id):
+    follow_up = db.session.get(FollowUpAutomation, follow_up_id)
+    if not follow_up or follow_up.deleted_at is not None:
+        abort(404)
+    follow_up.deleted_at = datetime.now(timezone.utc)
+    db.session.commit()
+    next_url = request.form.get('next') or url_for('search_history.email_campaign_detail', campaign_id=follow_up.campaign_id)
+    return redirect(next_url)
+
+
+@search_history_bp.route('/follow-ups/<int:follow_up_id>/edit', methods=['POST'])
+def edit_follow_up(follow_up_id):
+    follow_up = db.session.get(FollowUpAutomation, follow_up_id)
+    if not follow_up or follow_up.deleted_at is not None:
+        abort(404)
+    template_id = request.form.get('template_id', type=int)
+    template = db.session.get(EmailTemplate, template_id) if template_id else None
+    if not template:
+        abort(400, description='A valid follow-up template is required.')
+
+    scheduled_at_value = request.form.get('scheduled_at', '')
+    day_number_value = request.form.get('day_number', '')
+    scheduled_at = _parse_datetime_local(scheduled_at_value)
+    try:
+        day_number = int(day_number_value)
+    except (ValueError, TypeError):
+        day_number = None
+    if scheduled_at is None or day_number is None or day_number <= 0:
+        abort(400, description='A valid scheduled date and day number are required.')
+    follow_up.template_id = template.id
+    follow_up.scheduled_at = scheduled_at
+    follow_up.day_number = day_number
+    db.session.commit()
+    return redirect(url_for('search_history.email_campaign_detail', campaign_id=follow_up.campaign_id))
+
+
+@search_history_bp.route('/email-campaigns/<int:campaign_id>/follow-ups', methods=['POST'])
+def add_campaign_follow_up(campaign_id):
+    campaign = db.session.get(EmailCampaign, campaign_id)
+    if not campaign or campaign.deleted_at is not None:
+        abort(404)
+    company_id = request.form.get('company_id', type=int)
+    company = db.session.get(Company, company_id)
+    if not company or company_id not in {delivery.company_id for delivery in campaign.deliveries}:
+        abort(400, description='Invalid company for this campaign.')
+
+    template_id = request.form.get('template_id', type=int) or campaign.template_id
+    template = db.session.get(EmailTemplate, template_id)
+    if not template:
+        abort(400, description='A valid template is required for follow-up.')
+
+    day_number_value = request.form.get('day_number', '').strip()
+    scheduled_at_value = request.form.get('scheduled_at', '').strip()
+    try:
+        day_number = int(day_number_value)
+    except (ValueError, TypeError):
+        day_number = None
+    scheduled_at = _parse_datetime_local(scheduled_at_value)
+    if day_number is None or day_number <= 0 or scheduled_at is None:
+        abort(400, description='A valid follow-up day number and scheduled time are required.')
+
+    follow_up = FollowUpAutomation(
+        campaign_id=campaign.id,
+        company_id=company.id,
+        template_id=template.id,
+        day_number=day_number,
+        scheduled_at=scheduled_at,
+    )
+    db.session.add(follow_up)
+    db.session.commit()
+    return redirect(url_for('search_history.email_campaign_detail', campaign_id=campaign.id))
 
 
 @search_history_bp.route('/api/search-jobs')

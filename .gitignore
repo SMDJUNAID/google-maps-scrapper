@@ -72,11 +72,8 @@ dist/
 # ==========================================
 # Flask-Migrate
 # ==========================================
-migrations/*
-!migrations/versions/
-migrations/versions/*
-!migrations/versions/f6a7b8c9d0e1_add_notes_tasks_timeline_tags.py
-!migrations/versions/f7b8c9d0e1f2_add_email_campaigns_followups.py
+migrations/**/__pycache__/
+migrations/**/*.pyc
 
 # ==========================================
 # Temporary Files

@@ -316,6 +316,8 @@ class EmailCampaign(db.Model):
     created_by = db.Column(db.String(120), nullable=False, default='User')
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
     updated_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    deleted_at = db.Column(db.DateTime, nullable=True, index=True)
+    follow_up_days = db.Column(db.String(100), nullable=True)
 
     deliveries = db.relationship('EmailDelivery', backref='campaign', lazy=True, cascade='all, delete-orphan')
     follow_ups = db.relationship('FollowUpAutomation', backref='campaign', lazy=True, cascade='all, delete-orphan')
@@ -331,6 +333,8 @@ class EmailCampaign(db.Model):
             'created_by': self.created_by,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None,
+            'deleted_at': self.deleted_at.isoformat() if self.deleted_at else None,
+            'follow_up_days': self.follow_up_days,
         }
 
 
@@ -390,6 +394,7 @@ class FollowUpAutomation(db.Model):
     skip_reason = db.Column(db.String(300), nullable=True)
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
     updated_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    deleted_at = db.Column(db.DateTime, nullable=True, index=True)
 
     template = db.relationship('EmailTemplate', lazy=True)
     delivery = db.relationship('EmailDelivery', lazy=True)
@@ -408,6 +413,7 @@ class FollowUpAutomation(db.Model):
             'skip_reason': self.skip_reason,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None,
+            'deleted_at': self.deleted_at.isoformat() if self.deleted_at else None,
         }
 
 
@@ -428,6 +434,32 @@ class Tag(db.Model):
             'id': self.id,
             'name': self.name,
             'color': self.color,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None,
+        }
+
+
+class SearchStringTemplate(db.Model):
+    """Saved search string templates for quick reuse by industry or category."""
+    __tablename__ = 'search_string_templates'
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    name = db.Column(db.String(200), nullable=False, index=True)
+    industry = db.Column(db.String(200), nullable=False, index=True)
+    search_strings = db.Column(db.JSON, nullable=False)  # Array of strings
+    description = db.Column(db.Text, nullable=True)
+    created_by = db.Column(db.String(120), nullable=False, default='User')
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'name': self.name,
+            'industry': self.industry,
+            'search_strings': self.search_strings,
+            'description': self.description,
+            'created_by': self.created_by,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None,
         }

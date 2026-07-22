@@ -40,6 +40,7 @@
             <div class="actions">
                 <a href="{{ url_for('search_history.follow_ups') }}" class="btn btn-secondary">All</a>
                 <a href="{{ url_for('search_history.follow_ups', status='Pending') }}" class="btn btn-secondary">Pending</a>
+                <a href="{{ url_for('search_history.follow_ups', status='Pending', scheduled_date='today') }}" class="btn btn-secondary">Today</a>
                 <form method="POST" action="{{ url_for('search_history.process_due_follow_ups') }}">
                     <button class="btn btn-primary" type="submit">Process Due</button>
                 </form>
@@ -47,46 +48,56 @@
         </div>
 
         <div class="panel">
-            <table>
-                <thead>
-                    <tr>
-                        <th>Company</th>
-                        <th>Campaign</th>
-                        <th>Day</th>
-                        <th>Status</th>
-                        <th>Scheduled</th>
-                        <th>Sent</th>
-                        <th>Reason</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for follow_up in follow_ups %}
-                    <tr>
-                        <td>
-                            {% if follow_up.company %}
-                            <a href="{{ url_for('search_history.company_detail', company_id=follow_up.company_id) }}">{{ follow_up.company.name }}</a>
-                            {% else %}
-                            Company #{{ follow_up.company_id }}
-                            {% endif %}
-                        </td>
-                        <td>
-                            {% if follow_up.campaign %}
-                            <a href="{{ url_for('search_history.email_campaign_detail', campaign_id=follow_up.campaign_id) }}">{{ follow_up.campaign.name }}</a>
-                            {% else %}
-                            Campaign #{{ follow_up.campaign_id }}
-                            {% endif %}
-                        </td>
-                        <td>{{ follow_up.day_number }}</td>
-                        <td><span class="badge status-{{ follow_up.status|lower }}">{{ follow_up.status }}</span></td>
-                        <td>{{ follow_up.scheduled_at.strftime('%Y-%m-%d %H:%M') }}</td>
-                        <td>{{ follow_up.sent_at.strftime('%Y-%m-%d %H:%M') if follow_up.sent_at else '-' }}</td>
-                        <td>{{ follow_up.skip_reason or '-' }}</td>
-                    </tr>
-                    {% else %}
-                    <tr><td colspan="7" class="muted">No follow-ups found.</td></tr>
-                    {% endfor %}
-                </tbody>
-            </table>
+            <form method="POST" action="{{ url_for('search_history.send_selected_follow_ups') }}">
+                <table>
+                    <thead>
+                        <tr>
+                            <th><input type="checkbox" id="select-all" onclick="document.querySelectorAll('input[name=follow_up_ids]').forEach(cb => cb.checked = this.checked)"></th>
+                            <th>Company</th>
+                            <th>Campaign</th>
+                            <th>Template</th>
+                            <th>Day</th>
+                            <th>Status</th>
+                            <th>Scheduled</th>
+                            <th>Sent</th>
+                            <th>Reason</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for follow_up in follow_ups %}
+                        <tr>
+                            <td><input type="checkbox" name="follow_up_ids" value="{{ follow_up.id }}"></td>
+                            <td>
+                                {% if follow_up.company %}
+                                <a href="{{ url_for('search_history.company_detail', company_id=follow_up.company_id) }}">{{ follow_up.company.name }}</a>
+                                {% else %}
+                                Company #{{ follow_up.company_id }}
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if follow_up.campaign %}
+                                <a href="{{ url_for('search_history.email_campaign_detail', campaign_id=follow_up.campaign_id) }}">{{ follow_up.campaign.name }}</a>
+                                {% else %}
+                                Campaign #{{ follow_up.campaign_id }}
+                                {% endif %}
+                            </td>
+                            <td>{{ follow_up.template.name if follow_up.template else 'Campaign template' }}</td>
+                            <td>{{ follow_up.day_number }}</td>
+                            <td><span class="badge status-{{ follow_up.status|lower }}">{{ follow_up.status }}</span></td>
+                            <td>{{ follow_up.scheduled_at.strftime('%Y-%m-%d %H:%M') }}</td>
+                            <td>{{ follow_up.sent_at.strftime('%Y-%m-%d %H:%M') if follow_up.sent_at else '-' }}</td>
+                            <td>{{ follow_up.skip_reason or '-' }}</td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="9" class="muted">No follow-ups found.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                <div style="margin: 16px 0; display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+                    <button type="submit" class="btn btn-primary">Send Selected</button>
+                    <span class="muted">Selected pending follow-ups will be sent immediately.</span>
+                </div>
+            </form>
         </div>
     </div>
 </body>

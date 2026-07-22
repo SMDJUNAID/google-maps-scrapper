@@ -249,6 +249,54 @@
             margin-right: 5px;
             margin-bottom: 5px;
         }
+
+        .download-actions {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 20px;
+            background: #0f766e;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background 0.3s;
+            font-size: 14px;
+            text-decoration: none;
+        }
+
+        .btn:hover {
+            background: #115e59;
+        }
+
+        .btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+
+        .btn-secondary {
+            background: #f7faf8;
+            color: #0f766e;
+            border: 1px solid #d9e2dc;
+        }
+
+        .btn-secondary:hover {
+            background: #edf5f1;
+        }
+
+        .btn-secondary:disabled {
+            background: #f7faf8;
+            color: #999;
+        }
+
     </style>
 </head>
 <body>
@@ -334,6 +382,10 @@
         </div>
 
         {% if search_results %}
+        <div class="download-actions">
+            <button class="btn btn-secondary" id="downloadJsonBtn">⬇ Download JSON</button>
+            <button class="btn btn-secondary" id="downloadExcelBtn">⬇ Download Excel</button>
+        </div>
         <div class="companies-table">
             <table>
                 <thead>
@@ -432,5 +484,27 @@
         </div>
         {% endif %}
     </div>
+
+    <script>
+        const searchJobId = '{{ search_job.id }}';
+        
+        function download(format) {
+            if (!searchJobId) {
+                alert('No search job ID found.');
+                return;
+            }
+            window.location.href = `/search-history/${searchJobId}/download/${format}`;
+        }
+
+        const downloadJsonBtn = document.getElementById('downloadJsonBtn');
+        const downloadExcelBtn = document.getElementById('downloadExcelBtn');
+
+        if (downloadJsonBtn) {
+            downloadJsonBtn.addEventListener('click', () => download('json'));
+        }
+        if (downloadExcelBtn) {
+            downloadExcelBtn.addEventListener('click', () => download('excel'));
+        }
+    </script>
 </body>
 </html>

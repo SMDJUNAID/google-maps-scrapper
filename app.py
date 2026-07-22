@@ -12,10 +12,11 @@ from typing import Any
 
 from flask import Flask, jsonify, redirect, render_template, request, send_file, url_for
 from flask_migrate import Migrate
+from sqlalchemy.exc import IntegrityError
 
 from config import get_config
 from extensions import db
-from models import Company, Contact, SearchJob, SearchResult
+from models import Company, Contact, SearchJob, SearchResult, SearchStringTemplate
 from search_history import _record_activity, process_due_email_work, search_history_bp
 from scraper.contact_finder import enrich_results_combined
 from scraper.email_finder import enrich_results_with_emails
@@ -122,7 +123,7 @@ def _validate_scrape_payload(payload: dict[str, Any]) -> tuple[Any, int] | None:
         return jsonify({"error": "Country is required."}), 400
 
     if not isinstance(max_results, int) or max_results < 1:
-        return jsonify({"error": "Max results must be a positive integer."}), 400
+        return jsonify({"error": "Max results must be a positive integer (no upper limit)."}), 400
 
     cleaned_strings = [s.strip() for s in search_strings if isinstance(s, str) and s.strip()]
     if not cleaned_strings:
@@ -136,11 +137,17 @@ def _config_from_payload(payload: dict[str, Any]) -> ScrapeConfig:
     country = (payload.get("country") or "").strip()
     max_results = payload.get("max_results", 100)
     search_strings = payload.get("search_strings") or []
+    industry = (payload.get("industry") or "").strip()
 
     cleaned_strings = [s.strip() for s in search_strings if isinstance(s, str) and s.strip()]
-    industry_label = ", ".join(cleaned_strings[:3])
-    if len(cleaned_strings) > 3:
-        industry_label += f" (+{len(cleaned_strings) - 3} more)"
+    
+    # Use provided industry if available, otherwise generate from search strings
+    if not industry:
+        industry_label = ", ".join(cleaned_strings[:3])
+        if len(cleaned_strings) > 3:
+            industry_label += f" (+{len(cleaned_strings) - 3} more)"
+    else:
+        industry_label = industry
 
     return ScrapeConfig(
         country=country,
@@ -437,32 +444,55 @@ def _save_results_to_database(job_id: str, results: list[dict[str, Any]]) -> Non
             company = None
             if place_url:
                 company = Company.query.filter_by(place_url=place_url).first()
-            elif website:
-                company = Company.query.filter_by(website=website).first()
+            
+            # Try case-insensitive website lookup if place_url didn't find a match
+            if not company and website:
+                from sqlalchemy import func
+                company = Company.query.filter(
+                    func.lower(Company.website) == func.lower(website)
+                ).first()
             
             if not company:
-                company = Company(
-                    name=result.get("name", ""),
-                    address=result.get("address", ""),
-                    website=website,
-                    category=result.get("category", ""),
-                    rating=result.get("rating", ""),
-                    reviews_count=result.get("reviews_count", ""),
-                    place_url=place_url,
-                    country=result.get("country", ""),
-                    industry=result.get("industry", ""),
-                )
-                db.session.add(company)
-                db.session.flush()  # Get the company ID
-                company.state = state
-                company.city = city
-                _record_activity(
-                    company.id,
-                    "company_created",
-                    f"Company created from search job {job_id}.",
-                    user="System",
-                    metadata={"search_job_id": job_id},
-                )
+                try:
+                    company = Company(
+                        name=result.get("name", ""),
+                        address=result.get("address", ""),
+                        website=website,
+                        category=result.get("category", ""),
+                        rating=result.get("rating", ""),
+                        reviews_count=result.get("reviews_count", ""),
+                        place_url=place_url,
+                        country=result.get("country", ""),
+                        industry=result.get("industry", ""),
+                    )
+                    db.session.add(company)
+                    db.session.flush()  # Get the company ID
+                    company.state = state
+                    company.city = city
+                    _record_activity(
+                        company.id,
+                        "company_created",
+                        f"Company created from search job {job_id}.",
+                        user="System",
+                        metadata={"search_job_id": job_id},
+                    )
+                except IntegrityError:
+                    # Handle race condition: another process inserted the same company
+                    db.session.rollback()
+                    # Try to find it again with case-insensitive lookup
+                    if website:
+                        from sqlalchemy import func
+                        company = Company.query.filter(
+                            func.lower(Company.website) == func.lower(website)
+                        ).first()
+                    if not company and place_url:
+                        company = Company.query.filter_by(place_url=place_url).first()
+                    # If still not found, skip this entry to avoid duplicate constraint error
+                    if not company:
+                        app.logger.warning(
+                            f"Could not save company {result.get('name')} - duplicate constraint violation and recovery failed"
+                        )
+                        continue
             else:
                 # Update existing company with fresh data
                 before = {
@@ -848,6 +878,105 @@ def scrape_and_return_json():
             "results": data,
         }
     )
+
+
+@app.route("/api/search-string-templates", methods=["GET"])
+def list_search_string_templates():
+    """List all saved search string templates, optionally filtered by industry."""
+    with app.app_context():
+        industry = request.args.get("industry", "").strip()
+        if industry:
+            templates = (
+                SearchStringTemplate.query.filter_by(industry=industry)
+                .order_by(SearchStringTemplate.updated_at.desc(), SearchStringTemplate.name.asc())
+                .all()
+            )
+        else:
+            templates = SearchStringTemplate.query.order_by(
+                SearchStringTemplate.industry.asc(),
+                SearchStringTemplate.name.asc(),
+            ).all()
+        return jsonify([t.to_dict() for t in templates])
+
+
+@app.route("/api/search-string-templates", methods=["POST"])
+def save_search_string_template():
+    """Save a new search string template for an industry."""
+    with app.app_context():
+        payload = request.get_json(silent=True) or {}
+        
+        name = (payload.get("name") or "").strip()
+        industry = (payload.get("industry") or "").strip()
+        search_strings = payload.get("search_strings") or []
+        description = (payload.get("description") or "").strip()
+        
+        if not name:
+            return jsonify({"error": "Template name is required."}), 400
+        if not industry:
+            return jsonify({"error": "Industry is required."}), 400
+        
+        cleaned_strings = [s.strip() for s in search_strings if isinstance(s, str) and s.strip()]
+        if not cleaned_strings:
+            return jsonify({"error": "At least one search string is required."}), 400
+        
+        template = SearchStringTemplate(
+            name=name,
+            industry=industry,
+            search_strings=cleaned_strings,
+            description=description,
+            created_by=request.args.get("user", "User")
+        )
+        db.session.add(template)
+        db.session.commit()
+        
+        return jsonify(template.to_dict()), 201
+
+
+@app.route("/api/search-string-templates/<int:template_id>", methods=["PUT"])
+def update_search_string_template(template_id: int):
+    """Update an existing search string template."""
+    with app.app_context():
+        template = db.session.get(SearchStringTemplate, template_id)
+        if not template:
+            return jsonify({"error": "Template not found."}), 404
+        
+        payload = request.get_json(silent=True) or {}
+        
+        if "name" in payload:
+            template.name = (payload.get("name") or "").strip()
+        if "industry" in payload:
+            template.industry = (payload.get("industry") or "").strip()
+        if "search_strings" in payload:
+            search_strings = payload.get("search_strings") or []
+            template.search_strings = [s.strip() for s in search_strings if isinstance(s, str) and s.strip()]
+        if "description" in payload:
+            template.description = (payload.get("description") or "").strip()
+
+        if not template.name:
+            return jsonify({"error": "Template name is required."}), 400
+        if not template.industry:
+            return jsonify({"error": "Industry is required."}), 400
+        if not template.search_strings:
+            return jsonify({"error": "At least one search string is required."}), 400
+        
+        template.updated_at = datetime.now(timezone.utc)
+        db.session.commit()
+        
+        return jsonify(template.to_dict()), 200
+
+
+@app.route("/api/search-string-templates/<int:template_id>", methods=["DELETE"])
+def delete_search_string_template(template_id: int):
+    """Delete a search string template."""
+    with app.app_context():
+        template = db.session.get(SearchStringTemplate, template_id)
+        if not template:
+            return jsonify({"error": "Template not found."}), 404
+        
+        db.session.delete(template)
+        db.session.commit()
+        
+        return jsonify({"success": True}), 200
 
 
 if __name__ == "__main__":

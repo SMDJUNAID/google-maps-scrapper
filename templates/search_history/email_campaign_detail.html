@@ -30,6 +30,60 @@
         .status-failed { background: #f8d7da; color: #721c24; }
         .email-card { margin-top: 14px; padding: 16px; }
         .email-body { border-top: 1px solid #e6eee9; margin-top: 10px; padding-top: 10px; }
+        .followup-list { display: grid; gap: 16px; }
+        .followup-card {
+            background: #fbfcfb;
+            border: 1px solid #d9e2dc;
+            border-radius: 14px;
+            padding: 18px;
+        }
+        .followup-card-header {
+            align-items: center;
+            display: flex;
+            justify-content: space-between;
+            gap: 12px;
+            margin-bottom: 14px;
+        }
+        .followup-card-header .company-name {
+            color: #111827;
+            font-size: 16px;
+            font-weight: 800;
+            margin-bottom: 4px;
+        }
+        .followup-card-row {
+            display: grid;
+            gap: 10px;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            align-items: end;
+        }
+        .followup-card-row label {
+            color: #475569;
+            font-size: 13px;
+            font-weight: 700;
+        }
+        .followup-card-row input[type="number"],
+        .followup-card-row input[type="datetime-local"] {
+            border: 1px solid #d9e2dc;
+            border-radius: 8px;
+            padding: 10px 12px;
+            width: 100%;
+            font-size: 14px;
+            background: #ffffff;
+            color: #111827;
+        }
+        .followup-card-row .info { display:flex; flex-direction:column; gap:4px; }
+        .followup-actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-top: 14px;
+        }
+        .btn-sm {
+            border-radius: 8px;
+            font-size: 13px;
+            padding: 8px 14px;
+        }
+        .followup-card-footer { display:flex; justify-content:space-between; gap:10px; align-items:center; flex-wrap:wrap; }
         @media (max-width: 980px) { .header, .grid { display: block; } .panel { overflow-x: auto; } }
     </style>
 </head>
@@ -45,6 +99,9 @@
             <div class="actions">
                 <a href="{{ url_for('search_history.email_campaigns') }}" class="btn btn-secondary">Campaigns</a>
                 <a href="{{ url_for('search_history.follow_ups', status='Pending') }}" class="btn btn-secondary">Follow-ups</a>
+                <form method="POST" action="{{ url_for('search_history.delete_email_campaign', campaign_id=campaign.id) }}" style="display:inline;">
+                    <button type="submit" class="btn btn-warning">Delete Campaign</button>
+                </form>
             </div>
         </div>
 
@@ -113,29 +170,90 @@
             <aside>
                 <section class="panel">
                     <h2>Follow-up Automation</h2>
-                    <p class="muted">Day 3, Day 7, and Day 14 follow-ups stop when the lead replies or is marked Won/Lost.</p>
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>Company</th>
-                                <th>Day</th>
-                                <th>Status</th>
-                                <th>Scheduled</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for follow_up in follow_ups %}
-                            <tr>
-                                <td>{{ follow_up.company.name if follow_up.company else follow_up.company_id }}{% if follow_up.skip_reason %}<div class="muted">{{ follow_up.skip_reason }}</div>{% endif %}</td>
-                                <td>{{ follow_up.day_number }}</td>
-                                <td><span class="badge status-{{ follow_up.status|lower }}">{{ follow_up.status }}</span></td>
-                                <td>{{ follow_up.scheduled_at.strftime('%Y-%m-%d %H:%M') }}</td>
-                            </tr>
-                            {% else %}
-                            <tr><td colspan="4" class="muted">No follow-ups scheduled.</td></tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
+                    <p class="muted">Follow-ups stop when the lead replies or is marked Won/Lost. You can edit or delete any scheduled follow-up.</p>
+                    <div class="followup-list">
+                        {% for follow_up in follow_ups %}
+                        <div class="followup-card">
+                            <div class="followup-card-header">
+                                <div>
+                                    <div class="company-name">{{ follow_up.company.name if follow_up.company else 'Company #' ~ follow_up.company_id }}</div>
+                                    <div class="muted">Scheduled for {{ follow_up.scheduled_at.strftime('%Y-%m-%d %H:%M') }}</div>
+                                </div>
+                                <span class="badge status-{{ follow_up.status|lower }}">{{ follow_up.status }}</span>
+                            </div>
+                            {% if follow_up.skip_reason %}
+                            <p class="muted" style="margin-bottom: 14px;">{{ follow_up.skip_reason }}</p>
+                            {% endif %}
+                            <form method="POST" action="{{ url_for('search_history.edit_follow_up', follow_up_id=follow_up.id) }}" class="followup-card-body">
+                                <div class="followup-card-row">
+                                    <label>
+                                        Template
+                                        <select name="template_id" required>
+                                            {% for template in templates %}
+                                            <option value="{{ template.id }}" {% if follow_up.template_id == template.id %}selected{% endif %}>{{ template.name }}</option>
+                                            {% endfor %}
+                                        </select>
+                                    </label>
+                                </div>
+                                <div class="followup-card-row">
+                                    <label>
+                                        Day Number
+                                        <input type="number" name="day_number" min="1" value="{{ follow_up.day_number }}" required>
+                                    </label>
+                                    <label>
+                                        Scheduled At
+                                        <input type="datetime-local" name="scheduled_at" value="{{ follow_up.scheduled_at.strftime('%Y-%m-%dT%H:%M') }}" required>
+                                    </label>
+                                </div>
+                                <div class="followup-card-footer">
+                                    <button type="submit" class="btn btn-secondary btn-sm">Save</button>
+                                </div>
+                            </form>
+                            <form method="POST" action="{{ url_for('search_history.delete_follow_up', follow_up_id=follow_up.id) }}" style="margin:10px 0 0 0; display:inline-flex; align-items:center;">
+                                <input type="hidden" name="next" value="{{ url_for('search_history.email_campaign_detail', campaign_id=campaign.id) }}">
+                                <button type="submit" class="btn btn-warning btn-sm">Delete</button>
+                            </form>
+                        </div>
+                        {% else %}
+                        <div class="empty-state">No follow-ups scheduled.</div>
+                        {% endfor %}
+                    </div>
+                    <div style="margin-top: 22px;">
+                        <h3 style="margin-bottom: 14px;">Add New Follow-up</h3>
+                        <form method="POST" action="{{ url_for('search_history.add_campaign_follow_up', campaign_id=campaign.id) }}" style="display:grid; gap:14px;">
+                            <div style="display:grid; gap:12px; grid-template-columns: repeat(2, minmax(0, 1fr));">
+                                <label>
+                                    Company
+                                    <select name="company_id" required style="width:100%; border:1px solid #d9e2dc; border-radius:8px; padding:10px 12px; background:#ffffff;">
+                                        <option value="">Select company</option>
+                                        {% for company in company_options %}
+                                        <option value="{{ company.id }}">{{ company.name }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </label>
+                                <label>
+                                    Template
+                                    <select name="template_id" style="width:100%; border:1px solid #d9e2dc; border-radius:8px; padding:10px 12px; background:#ffffff;">
+                                        <option value="">Use campaign template</option>
+                                        {% for template in templates %}
+                                        <option value="{{ template.id }}" {% if campaign.template_id == template.id %}selected{% endif %}>{{ template.name }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </label>
+                            </div>
+                            <div style="display:grid; gap:12px; grid-template-columns: repeat(2, minmax(0, 1fr));">
+                                <label>
+                                    Day Number
+                                    <input type="number" name="day_number" min="1" placeholder="3" required style="width:100%;">
+                                </label>
+                                <label>
+                                    Scheduled At
+                                    <input type="datetime-local" name="scheduled_at" required style="width:100%;">
+                                </label>
+                            </div>
+                            <button type="submit" class="btn btn-primary">Add Follow-up</button>
+                        </form>
+                    </div>
                     <form method="POST" action="{{ url_for('search_history.process_due_follow_ups') }}" style="margin-top: 14px;">
                         <button class="btn btn-primary" type="submit">Process Due Follow-ups</button>
                     </form>

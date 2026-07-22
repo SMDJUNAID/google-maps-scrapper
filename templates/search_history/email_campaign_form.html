@@ -247,8 +247,34 @@
                         </select>
                     </div>
                     <div>
-                        <label for="scheduled_at">Schedule For</label>
+                        <label for="follow_up_template_id">Follow-up Template</label>
+                        <select id="follow_up_template_id" name="follow_up_template_id">
+                            <option value="">Use campaign template</option>
+                            {% for template in templates %}
+                            <option value="{{ template.id }}" {% if selected_follow_up_template_id == template.id %}selected{% endif %}>{{ template.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div>
+                        <label for="scheduled_at">Campaign Start</label>
                         <input id="scheduled_at" name="scheduled_at" type="datetime-local" value="{{ scheduled_at }}">
+                    </div>
+                    <div>
+                        <label for="schedule_mode">Schedule Mode</label>
+                        <select id="schedule_mode" name="schedule_mode">
+                            <option value="single" {% if schedule_mode == 'single' %}selected{% endif %}>Single day schedule</option>
+                            <option value="batch" {% if schedule_mode == 'batch' %}selected{% endif %}>Batch over next days</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label for="batch_days">Batch Days</label>
+                        <input id="batch_days" name="batch_days" type="number" min="1" value="{{ batch_days }}" placeholder="30">
+                        <p class="helper">When batch scheduling, distribute selected companies evenly across this many days.</p>
+                    </div>
+                    <div>
+                        <label for="follow_up_days">Follow-up Days</label>
+                        <input id="follow_up_days" name="follow_up_days" type="text" value="{{ follow_up_days }}" placeholder="3,7,14">
+                        <p class="helper">Enter comma-separated day offsets for follow-ups, e.g. 3,7,14.</p>
                     </div>
                 </div>
             </section>
@@ -307,11 +333,13 @@
                     <div class="filter-actions">
                         <p class="helper">Filters combine together, so each visible company matches every selected filter.</p>
                         <button class="btn btn-secondary" name="action" value="filter" type="submit" formnovalidate>Apply Filters</button>
+                        <button class="btn btn-secondary" name="action" value="select_all" type="submit" formnovalidate>Select All Visible</button>
                     </div>
 
                     <div class="summary-row">
                         <div class="summary-card"><span>Visible Companies</span><strong>{{ companies|length }}</strong></div>
                         <div class="summary-card"><span>Selected</span><strong>{{ selected_company_ids|length }}</strong></div>
+                        <div class="summary-card"><span>Batch Days</span><strong>{{ batch_days }}</strong></div>
                         <div class="summary-card"><span>Previewed</span><strong>{{ previews|length }}</strong></div>
                     </div>
 
